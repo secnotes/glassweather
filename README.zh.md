@@ -80,7 +80,44 @@ npx tauri dev      # 开发运行
 npx tauri build    # 产出 .deb / AppImage 于 src-tauri/target/release/bundle/
 ```
 
-**Windows**：推荐直接在 [GitHub Releases](https://github.com/secnotes/weather/releases) 下载 `.msi` / `.exe` 安装包。推送 `v*` tag 会触发 GitHub Actions（`.github/workflows/tauri-release.yml`）自动构建 Windows 与 Linux 安装包并发布到 Releases。本地自行构建需安装 Rust + Visual Studio Build Tools，然后 `npm install && npx tauri build`。
+**Windows**：推荐直接在 [GitHub Releases](https://github.com/secnotes/weather/releases) 下载 `.msi` / `.exe` 安装包。推送 `v*` tag 会触发 GitHub Actions（`.github/workflows/tauri-release.yml`）自动构建 Windows 与 Linux 安装包并发布到 Releases。
+
+**Windows 本地构建**：
+
+1. 安装前置工具（一次即可）：
+   - **Rust**：运行 [rustup-init.exe](https://rustup.rs)，默认选项安装（工具链 `stable-x86_64-pc-windows-msvc`）
+   - **Visual Studio 2022 生成工具**：勾选「使用 C++ 的桌面开发」工作负载（需含 MSVC v143 与 Windows 11 SDK），约 3-4 GB
+   - **Node.js** ≥ 18（仅用于 Tauri CLI）
+   - WebView2 为 Win10/11 系统自带，无需单独安装
+2. 构建：
+
+   ```bash
+   npm install
+   npx tauri build
+   ```
+
+3. 产物位于（二选一安装）：
+   - `src-tauri/target/release/bundle/msi/Weather_x.y.z_x64_en-US.msi`
+   - `src-tauri/target/release/bundle/nsis/Weather_x.y.z_x64-setup.exe`
+
+**国内网络提速**（直连慢/被拒时）：
+
+```bash
+# rustup 组件下载走中科大镜像（设完重开终端再执行 rustup default stable-msvc）
+setx RUSTUP_DIST_SERVER https://mirrors.ustc.edu.cn/rust-static
+setx RUSTUP_UPDATE_ROOT https://mirrors.ustc.edu.cn/rust-static/rustup
+
+# crates.io 依赖走 sparse 镜像：写入 %USERPROFILE%\.cargo\config.toml
+# [source.crates-io]
+# replace-with = 'ustc'
+# [source.ustc]
+# registry = 'sparse+https://mirrors.ustc.edu.cn/crates.io-index/'
+
+# 首次打包时 Tauri 还要从 GitHub 下载 WiX / NSIS 工具包，
+# 不通则给构建进程挂代理：
+set HTTPS_PROXY=http://127.0.0.1:10808
+npx tauri build
+```
 
 注意事项：
 

@@ -80,7 +80,44 @@ npx tauri dev      # run in development
 npx tauri build    # produces .deb / AppImage under src-tauri/target/release/bundle/
 ```
 
-**Windows**: easiest is to grab the `.msi` / `.exe` installer from [GitHub Releases](https://github.com/secnotes/weather/releases). Pushing a `v*` tag triggers the GitHub Actions workflow (`.github/workflows/tauri-release.yml`), which builds and publishes Windows and Linux installers to Releases. To build locally you need Rust + Visual Studio Build Tools, then `npm install && npx tauri build`.
+**Windows**: easiest is to grab the `.msi` / `.exe` installer from [GitHub Releases](https://github.com/secnotes/weather/releases). Pushing a `v*` tag triggers the GitHub Actions workflow (`.github/workflows/tauri-release.yml`), which builds and publishes Windows and Linux installers to Releases.
+
+**Building locally on Windows**:
+
+1. Install the prerequisites (one-time):
+   - **Rust**: run the [rustup-init.exe](https://rustup.rs) installer with default options (toolchain `stable-x86_64-pc-windows-msvc`)
+   - **Visual Studio 2022 Build Tools**: select the "Desktop development with C++" workload (MSVC v143 + Windows 11 SDK included), ~3-4 GB
+   - **Node.js** ≥ 18 (only used for the Tauri CLI)
+   - WebView2 ships with Windows 10/11 — nothing extra to install
+2. Build:
+
+   ```bash
+   npm install
+   npx tauri build
+   ```
+
+3. Pick either artifact produced under `src-tauri/target/release/bundle/`:
+   - `msi/Weather_x.y.z_x64_en-US.msi`
+   - `nsis/Weather_x.y.z_x64-setup.exe`
+
+**Speeding up downloads from mainland China** (when direct access is slow or blocked):
+
+```bash
+# rustup components via the USTC mirror (reopen the terminal after setx, then rustup default stable-msvc)
+setx RUSTUP_DIST_SERVER https://mirrors.ustc.edu.cn/rust-static
+setx RUSTUP_UPDATE_ROOT https://mirrors.ustc.edu.cn/rust-static/rustup
+
+# crates.io dependencies via the sparse mirror: write to %USERPROFILE%\.cargo\config.toml
+# [source.crates-io]
+# replace-with = 'ustc'
+# [source.ustc]
+# registry = 'sparse+https://mirrors.ustc.edu.cn/crates.io-index/'
+
+# The first build also downloads the WiX / NSIS packers from GitHub;
+# if that fails, proxy the build process:
+set HTTPS_PROXY=http://127.0.0.1:10808
+npx tauri build
+```
 
 Notes:
 
