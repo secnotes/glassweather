@@ -1,0 +1,12 @@
+{
+  "name": "weather-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "桌面天气应用（Tauri 壳）。前端文件在仓库根目录，与网页版共用。",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

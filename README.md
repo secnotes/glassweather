@@ -57,6 +57,39 @@ npx serve .
 
 You can also double-click `index.html` to open it via `file://` (the APIs allow CORS, so it works fine). Note: browser Geolocation requires a secure context (HTTPS or localhost); most browsers disable it on `file://`, in which case the site falls back to Beijing.
 
+## Desktop App (Tauri)
+
+The repo also ships a Tauri 2 desktop shell (`src-tauri/`). It **reuses the same frontend** — `index.html` / `app.js` / `style.css` at the repo root are copied into `dist/` by `copy-frontend.js` and embedded in the installer. The website and the app share one source tree, and GitHub Pages deployment is unaffected.
+
+Desktop features:
+
+- A standalone window loading the site (WebKitGTK on Linux, system WebView2 on Windows — small installers)
+- System tray: left-click restores the window; the right-click menu offers Show / Launch-at-login toggle / Quit
+- Tray weather: the tray icon changes with the current conditions (8 glyphs — clear day/night, partly cloudy, overcast, fog, rain, snow, thunder — switching automatically with time of day and language). Hovering the icon shows a detail card (temperature, feels-like, humidity, wind, pressure, AQI, tomorrow's forecast); clicking the card opens the main window
+- Closing the window minimizes to the tray; use Quit in the tray menu to exit
+
+**Local development on Linux** (Debian / Ubuntu / Kali):
+
+```bash
+# System deps + Rust (rustc >= 1.77.5; distro packages or rustup both work)
+sudo apt install rustc cargo libwebkit2gtk-4.1-dev build-essential libssl-dev \
+  libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+npm install
+npx tauri dev      # run in development
+npx tauri build    # produces .deb / AppImage under src-tauri/target/release/bundle/
+```
+
+**Windows**: easiest is to grab the `.msi` / `.exe` installer from [GitHub Releases](https://github.com/secnotes/weather/releases). Pushing a `v*` tag triggers the GitHub Actions workflow (`.github/workflows/tauri-release.yml`), which builds and publishes Windows and Linux installers to Releases. To build locally you need Rust + Visual Studio Build Tools, then `npm install && npx tauri build`.
+
+Notes:
+
+- On Linux, WebKitGTK geolocation relies on the geoclue service and often fails — the app keeps the web fallback to Beijing
+- GNOME hides tray icons by default; install the AppIndicator/KStatusNotifier extension. KDE / XFCE support it natively
+- The tray hover card works on all three platforms (Linux detects hover via cursor polling, so a slight delay is normal)
+- Windows 11 tucks new apps into the hidden tray overflow by default; enable them under Taskbar settings → Other system tray icons, or drag the icon onto the taskbar
+- Weather icons are emoji; install `fonts-noto-color-emoji` on Linux
+
 ## Notes
 
 - Open-Meteo's free tier allows 10,000 non-commercial calls per day — plenty for personal use.

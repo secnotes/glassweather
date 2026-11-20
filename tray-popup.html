@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<!--
+  桌面版托盘悬停弹窗（Tauri 专用；网页版不加载本文件）。
+  与主窗口同源，直接读 localStorage('weather:tray') 渲染，无网络请求；
+  数据由 app.js 的 syncTrayWeather() 写入，storage 事件 + 定时轮询双通道刷新。
+  点击卡片打开主窗口（invoke 'popup_clicked'，由 Rust 侧显示主窗口并关弹窗）。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", system-ui, sans-serif;
+    color: #f5f7fa;
+    background: linear-gradient(160deg, #0f2027, #203a43 55%, #2c5364);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 12px;
+    padding: 14px 16px 12px;
+    cursor: default;
+  }
+  .row1 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .city { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .desc { font-size: 13px; color: rgba(245,247,250,0.85); white-space: nowrap; }
+  .desc .emoji { font-size: 17px; margin-right: 4px; }
+  .row2 { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+  .temp { font-size: 38px; font-weight: 300; line-height: 1.15; }
+  .feels { font-size: 12px; color: rgba(245,247,250,0.70); }
+  .range { margin-left: auto; font-size: 12px; color: rgba(245,247,250,0.85); text-align: right; }
+  .range .pop { color: #38bdf8; display: block; margin-top: 2px; }
+  hr { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 9px 0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: 12px; }
+  .grid .cell { display: flex; justify-content: space-between; gap: 8px; }
+  .grid .k { color: rgba(245,247,250,0.60); white-space: nowrap; }
+  .grid .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tm { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .tm .k { color: rgba(245,247,250,0.60); }
+  .tm .emoji { font-size: 15px; }
+  .tm .t { margin-left: auto; }
+  .empty { display: flex; height: 100%; align-items: center; justify-content: center;
+           color: rgba(245,247,250,0.60); font-size: 13px; }
+</style>
+</head>
+<body>
+  <div id="card" style="display:none">
+    <div class="row1">
+      <span class="city" id="city"></span>
+      <span class="desc"><span class="emoji" id="emoji"></span><span id="desc"></span></span>
+    </div>
+    <div class="row2">
+      <span class="temp" id="temp"></span>
+      <span class="feels" id="feels"></span>
+      <span class="range"><span id="range"></span><span class="pop" id="pop"></span></span>
+    </div>
+    <hr>
+    <div class="grid">
+      <div class="cell"><span class="k" data-l="湿度|Humidity"></span><span class="v" id="humidity"></span></div>
+      <div class="cell"><span class="k" data-l="风力|Wind"></span><span class="v" id="wind"></span></div>
+      <div class="cell"><span class="k" data-l="气压|Pressure"></span><span class="v" id="pressure"></span></div>
+      <div class="cell"><span class="k" data-l="空气|Air"></span><span class="v" id="aqi"></span></div>
+    </div>
+    <hr>
+    <div class="tm">
+      <span class="k" data-l="明日|Tomorrow"></span>
+      <span class="emoji" id="tm-emoji"></span>
+      <span id="tm-desc"></span>
+      <span class="t" id="tm-range"></span>
+    </div>
+  </div>
+  <div class="empty" id="empty">…</div>
+
+<script>
+'use strict';
+var L = 'zh';
+function I18N(k) {
+  var zh = { 'feels': '体感', 'today': '今日', 'aqiUnit': '' , 'hpa': 'hPa' };
+  var en = { 'feels': 'Feels', 'today': 'Today', 'aqiUnit': ' AQI', 'hpa': 'hPa' };
+  return (L === 'zh' ? zh : en)[k];
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+  });
+}
+function render(s) {
+  if (!s) return;
+  L = s.lang === 'en' ? 'en' : 'zh';
+  document.documentElement.lang = L === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-l]').forEach(function (el) {
+    el.textContent = el.dataset.l.split('|')[L === 'zh' ? 0 : 1];
+  });
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('card').style.display = '';
+  document.getElementById('city').textContent = s.city;
+  document.getElementById('emoji').textContent = s.emoji;
+  document.getElementById('desc').textContent = s.desc;
+  document.getElementById('temp').textContent = s.temp + '°';
+  document.getElementById('feels').textContent = I18N('feels') + ' ' + s.feels + '°';
+  document.getElementById('range').textContent = I18N('today') + ' ' + s.tmin + '° ~ ' + s.tmax + '°';
+  document.getElementById('pop').textContent = s.pop == null ? '' : '💧 ' + s.pop + '%';
+  document.getElementById('humidity').textContent = s.humidity + ' %';
+  document.getElementById('wind').textContent = s.wind;
+  document.getElementById('pressure').textContent = s.pressure + ' hPa';
+  document.getElementById('aqi').textContent =
+    s.aqi == null ? '--' : (s.aqiText ? s.aqiText + ' ' : '') + s.aqi + I18N('aqiUnit');
+  document.getElementById('tm-emoji').textContent = s.tmEmoji;
+  document.getElementById('tm-desc').textContent = s.tmDesc;
+  document.getElementById('tm-range').textContent = s.tmMin + '° ~ ' + s.tmMax + '°';
+}
+function readOnce() {
+  try {
+    var raw = localStorage.getItem('weather:tray');
+    if (raw) render(JSON.parse(raw));
+  } catch (e) {}
+}
+window.addEventListener('storage', function (e) { if (e.key === 'weather:tray') readOnce(); });
+setInterval(readOnce, 1500);
+readOnce();
+
+/* 点击卡片 → 打开主窗口（全局 API 未就绪时短暂重试） */
+document.body.addEventListener('click', function () {
+  var n = 0;
+  (function ping() {
+    var g = window.__TAURI__;
+    if (g && g.core && typeof g.core.invoke === 'function') {
+      try { g.core.invoke('popup_clicked').catch(function () {}); } catch (e) {}
+      return;
+    }
+    if (n++ < 40) setTimeout(ping, 250);
+  })();
+});
+</script>
+</body>
+</html>

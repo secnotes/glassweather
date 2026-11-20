@@ -1,1 +1,9 @@
 .claude/
+
+# Node（仅用于 Tauri CLI）
+node_modules/
+
+# 桌面应用：Tauri 构建产物
+dist/
+src-tauri/target/
+src-tauri/gen/

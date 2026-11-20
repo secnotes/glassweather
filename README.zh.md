@@ -57,6 +57,39 @@ npx serve .
 
 也可以直接双击 `index.html` 用 `file://` 打开（API 允许跨域，可正常工作）。注意：浏览器定位（Geolocation）需要安全环境（HTTPS 或 localhost），`file://` 下多数浏览器会禁用定位，此时回退北京。
 
+## 桌面应用（Tauri）
+
+仓库同时包含一个 Tauri 2 桌面壳（`src-tauri/`）。前端**直接复用**本目录的 `index.html` / `app.js` / `style.css`（由 `copy-frontend.js` 拷入 `dist/` 嵌入安装包），网页版与桌面应用共用同一份代码，GitHub Pages 部署不受影响。
+
+桌面特性：
+
+- 独立窗口加载站点（Linux 用 WebKitGTK，Windows 用系统 WebView2，安装包很小）
+- 系统托盘：左键单击恢复窗口，右键菜单含「显示主窗口 / 开机自启开关 / 退出」
+- 托盘天气：托盘图标随当前天气变化（晴/夜晴/多云/阴/雾/雨/雪/雷暴 8 组图形，随昼夜与语言自动切换），鼠标悬停在图标上会弹出详情卡片（温度、体感、湿度、风力、气压、AQI、明日预报），点击卡片打开主窗口
+- 关闭窗口最小化到托盘，常驻后台；退出请走托盘菜单
+
+**Linux 本地开发**（Debian / Ubuntu / Kali）：
+
+```bash
+# 系统依赖 + Rust（rustc ≥ 1.77.5，apt 版或 rustup 均可）
+sudo apt install rustc cargo libwebkit2gtk-4.1-dev build-essential libssl-dev \
+  libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+npm install
+npx tauri dev      # 开发运行
+npx tauri build    # 产出 .deb / AppImage 于 src-tauri/target/release/bundle/
+```
+
+**Windows**：推荐直接在 [GitHub Releases](https://github.com/secnotes/weather/releases) 下载 `.msi` / `.exe` 安装包。推送 `v*` tag 会触发 GitHub Actions（`.github/workflows/tauri-release.yml`）自动构建 Windows 与 Linux 安装包并发布到 Releases。本地自行构建需安装 Rust + Visual Studio Build Tools，然后 `npm install && npx tauri build`。
+
+注意事项：
+
+- Linux 下 WebKitGTK 定位依赖 geoclue 服务，多数环境会失败——应用会沿用网页逻辑自动回退北京
+- GNOME 默认不显示托盘图标，需安装 AppIndicator/KStatusNotifier 扩展；KDE / XFCE 原生支持
+- 托盘悬停弹窗在三平台均可用（Linux 托盘经光标轮询检测悬停，略有延迟属正常）
+- Windows 11 默认把新应用收进托盘溢出区，可在「任务栏设置 → 其他系统托盘图标」中开启常显，或把图标拖到任务栏
+- 天气图标使用 emoji，Linux 需安装 `fonts-noto-color-emoji`
+
 ## 说明
 
 - Open-Meteo 免费版非商业用途每日 10,000 次调用上限，个人使用绰绰有余。

@@ -21,6 +21,89 @@ const CHUNK_COUNT  = 6;                        // 6 × 5 年 = 30 年
 let LANG = 'zh';
 try { LANG = localStorage.getItem('weather:lang') || 'zh'; } catch {}
 
+/* ---------- 桌面版（Tauri）桥接：托盘菜单 / 托盘天气 ----------
+   仅在 Tauri webview 里存在 __TAURI_INTERNALS__（由壳层在页面脚本前注入；
+   网页版没有，以下全部代码不执行）。窗口全局 API（window.__TAURI__）在慢机
+   WebKitGTK 上注入可能晚至 ~20s，故命令调用统一走 invokeTray 重试；同时把
+   状态写入 localStorage，Rust 侧还有一条 2s 轮询 eval 的兜底通道。 */
+function isTauriShell() {
+  return typeof window === 'object' &&
+    ('__TAURI_INTERNALS__' in window || (window.__TAURI__ && window.__TAURI__.core));
+}
+
+/* 调用 Tauri 命令（不依赖 npm 版 JS API；全局对象未就绪时按 500ms 重试） */
+function invokeTray(cmd, args, retries) {
+  retries = retries ?? 240;   // 240 × 500ms = 2 分钟兜底
+  try {
+    const g = window.__TAURI__;
+    if (g && typeof g.core.invoke === 'function') {
+      g.core.invoke(cmd, args).catch(() => {});
+      return;
+    }
+  } catch {}
+  if (isTauriShell() && retries > 0) setTimeout(() => invokeTray(cmd, args, retries - 1), 500);
+}
+
+function syncTrayLang() {
+  if (!isTauriShell()) return;
+  invokeTray('set_tray_lang', { lang: LANG });
+}
+
+/* 托盘天气快照：图标只含天气类型（按 WMO 归 8 组 + 昼夜），温度与详情供悬停弹窗。
+   弹窗是同目录另一个 Tauri webview（tray-popup.html），与主窗口同源，直接读
+   localStorage('weather:tray') 渲染；因此这里写 localStorage 与 invoke 双通道。 */
+function buildTraySnapshot() {
+  const w = lastCtx && lastCtx.weather;
+  if (!w || !w.current || !w.daily) return null;
+  const c = w.current, d = w.daily;
+  const aqiCur = lastCtx.aqi && lastCtx.aqi.current;
+  let aqiValue = null, aqiText = '';
+  if (aqiCur) {
+    if (LANG === 'zh') {
+      aqiValue = calcChinaAqi(aqiCur).aqi;
+    } else if (aqiCur.us_aqi != null) {
+      aqiValue = aqiCur.us_aqi;
+    }
+    const sc = aqiScale(aqiValue);
+    if (sc) aqiText = sc.text;
+  }
+  const snap = {
+    lang: LANG,
+    city: cityLabel(),
+    code: c.weather_code,
+    isDay: c.is_day !== 0,   // 缺字段时按白天处理
+    temp: Math.round(c.temperature_2m),
+    feels: Math.round(c.apparent_temperature),
+    desc: wmoText(c.weather_code),
+    emoji: wmoEmoji(c.weather_code),
+    humidity: c.relative_humidity_2m,
+    wind: LANG === 'zh'
+      ? `${windLevel(c.wind_speed_10m)} 级 ${windDirLabel(c.wind_direction_10m)}风`
+      : `Force ${windLevel(c.wind_speed_10m)} · ${windDirLabel(c.wind_direction_10m)}`,
+    pressure: Math.round(c.surface_pressure),
+    aqi: aqiValue == null ? null : Math.round(aqiValue),
+    aqiText,
+    tmin: Math.round(d.temperature_2m_min[0]),
+    tmax: Math.round(d.temperature_2m_max[0]),
+    pop: d.precipitation_probability_max ? d.precipitation_probability_max[0] : null,
+    tmCode: d.weather_code[1],
+    tmEmoji: wmoEmoji(d.weather_code[1]),
+    tmDesc: wmoText(d.weather_code[1]),
+    tmMin: Math.round(d.temperature_2m_min[1]),
+    tmMax: Math.round(d.temperature_2m_max[1]),
+    ts: Date.now(),
+  };
+  return snap;
+}
+
+function syncTrayWeather() {
+  if (!isTauriShell()) return;
+  const snap = buildTraySnapshot();
+  if (!snap) return;
+  try { localStorage.setItem('weather:tray', JSON.stringify(snap)); } catch {}
+  invokeTray('set_tray_weather', { snapshot: snap });
+}
+
 const I18N = {
   zh: {
     title: '天气查询',
@@ -235,6 +318,7 @@ function localeTag() { return LANG === 'zh' ? 'zh-CN' : 'en-US'; }
 /* 静态文案：按 data-i18n / data-i18n-ph 属性整体切换 */
 function applyLang() {
   document.documentElement.lang = localeTag();
+  document.title = t('title');   // 标题跟随语言（网页版标签页 / 桌面版由 Rust 侧 set_tray_lang 同步窗口标题）
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
   document.querySelectorAll('#lang-switch button').forEach(b => {
@@ -360,7 +444,7 @@ async function loadWeather(lat, lon) {
   const params = new URLSearchParams({
     latitude: lat, longitude: lon, timezone: 'auto', forecast_days: '7',
     past_hours: '24',
-    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,uv_index',
+    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m,surface_pressure,uv_index',
     hourly: 'surface_pressure,uv_index',
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max',
   });
@@ -1755,6 +1839,7 @@ function renderWeather(data, cityLabel) {
 
   renderForecast(d);
   document.getElementById('current').classList.remove('skeleton');
+  syncTrayWeather();   // 桌面版：刷新托盘天气图标/悬停弹窗（网页版 no-op）
 }
 
 /* ---------- 7 天预报：卡片 / 列表 双模式 ---------- */
@@ -1928,27 +2013,34 @@ async function locateMe({ isStartup = false } = {}) {
   if (!('geolocation' in navigator)) return finish('unsupported', t('loc-unsupported'));
   locBtnSetLoading(true);
   return new Promise(resolve => {
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        // 与各数据缓存 key 一致的 ~1km 精度
-        const lat = roundCoord(pos.coords.latitude);
-        const lon = roundCoord(pos.coords.longitude);
-        try {
-          const { zhName, enName } = await reverseGeocode(lat, lon);
-          // selectCity 内部自带错误处理（toast），不 await：定位成功、开始加载即结束按钮动画
-          selectCity(lat, lon, zhName, enName);
-          resolve(finish('ok'));
-        } catch (e) {
-          showToast(t('weather-err') + e.message);
-          resolve(finish('fail'));
-        }
-      },
-      err => {
-        const denied = err.code === err.PERMISSION_DENIED;
-        resolve(finish(denied ? 'denied' : 'fail', denied ? t('loc-denied') : t('loc-fail')));
-      },
-      { timeout: 8000, maximumAge: 600000 },   // 10 分钟内的缓存位置可直接复用
-    );
+    // 注意：WebKitGTK（Linux 桌面壳）在 geoclue 不可用时会在 getCurrentPosition 调用
+    // 本身同步抛错（表现为 'append' on 'FormData' 之类的内部异常），必须用 try/catch 兜住，
+    // 否则整个启动流程中断、页面停在骨架屏；浏览器上永远不会走到这个分支。
+    try {
+      navigator.geolocation.getCurrentPosition(
+        async pos => {
+          // 与各数据缓存 key 一致的 ~1km 精度
+          const lat = roundCoord(pos.coords.latitude);
+          const lon = roundCoord(pos.coords.longitude);
+          try {
+            const { zhName, enName } = await reverseGeocode(lat, lon);
+            // selectCity 内部自带错误处理（toast），不 await：定位成功、开始加载即结束按钮动画
+            selectCity(lat, lon, zhName, enName);
+            resolve(finish('ok'));
+          } catch (e) {
+            showToast(t('weather-err') + e.message);
+            resolve(finish('fail'));
+          }
+        },
+        err => {
+          const denied = err.code === err.PERMISSION_DENIED;
+          resolve(finish(denied ? 'denied' : 'fail', denied ? t('loc-denied') : t('loc-fail')));
+        },
+        { timeout: 8000, maximumAge: 600000 },   // 10 分钟内的缓存位置可直接复用
+      );
+    } catch (e) {
+      resolve(finish('fail', t('loc-fail')));
+    }
   });
 }
 
@@ -1989,7 +2081,7 @@ async function selectCity(lat, lon, zhName, enName) {
   // 天气 / 历史 / 空气质量并行拉取（历史是慢的那个，约 10 秒）
   const weatherP = loadWeather(lat, lon);
   const historyP = loadHistoryData(lat, lon);
-  const aqiP = loadAQI(lat, lon).then(d => { lastCtx.aqi = d; renderAQI(d); }).catch(e => {
+  const aqiP = loadAQI(lat, lon).then(d => { lastCtx.aqi = d; renderAQI(d); syncTrayWeather(); }).catch(e => {
     setText('d-aqi', '--');
     setText('d-aqi-level', t('aqi-err'));
   });
@@ -2023,7 +2115,9 @@ function setLang(lang) {
   LANG = lang;
   try { localStorage.setItem('weather:lang', lang); } catch {}
   applyLang();
-  if (lastCtx.weather) renderWeather(lastCtx.weather, cityLabel());
+  syncTrayLang();   // 桌面版：托盘菜单跟随语言（网页版为 no-op）
+  if (lastCtx.weather) { renderWeather(lastCtx.weather, cityLabel()); syncTrayWeather(); }
+  if (lastCtx.aqi) renderAQI(lastCtx.aqi);
   if (lastCtx.aqi) renderAQI(lastCtx.aqi);
   if (lastCtx.extremes) renderExtremes(lastCtx.extremes, cityLabel());
   else showExtremesLoading();  // 历史仍在后台拉取，完成时会按新语言渲染
@@ -2099,5 +2193,6 @@ function showToast(msg) {
 
 /* ---------- 启动：优先记忆位置，首次访问自动定位，失败回退北京 ---------- */
 applyLang();
+syncTrayLang();   // 桌面版：启动即用记忆语言重建托盘菜单（网页版为 no-op）
 document.getElementById('loc-btn').addEventListener('click', () => locateMe());
 loadInitialCity();
