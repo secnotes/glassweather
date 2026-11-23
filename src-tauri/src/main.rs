@@ -27,7 +27,7 @@ const MENU_BAR: &str = "bar";
 
 /// 应用版本（来自 Cargo.toml，发版时只需改 Cargo.toml 的 version 字段）
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-const APP_SITE: &str = "https://github.com/secnotes/weather";
+const APP_SITE: &str = "https://github.com/secnotes/glassweather";
 
 const POPUP_W: f64 = 320.0;
 const POPUP_H: f64 = 218.0;
