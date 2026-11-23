@@ -25,30 +25,46 @@ const MENU_QUIT: &str = "quit";
 #[cfg(windows)]
 const MENU_BAR: &str = "bar";
 
+/// 应用版本（来自 Cargo.toml，发版时只需改 Cargo.toml 的 version 字段）
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const APP_SITE: &str = "https://github.com/secnotes/weather";
+
 const POPUP_W: f64 = 320.0;
 const POPUP_H: f64 = 218.0;
 
 /* ============================ 语言 / 托盘菜单 ============================ */
 
 /// 托盘菜单与窗口标题文案（跟随前端语言，前端初始化/切换语言时会调用 set_tray_lang）
-fn tray_texts(lang: &str) -> (String, String, String, String, String, String) {
-    // (显示主窗口, 开机自启, 任务栏天气条[仅 Windows], 退出, 默认 tooltip, 窗口标题)
+fn tray_texts(
+    lang: &str,
+) -> (String, String, String, String, String, String, String, String) {
+    // (显示主窗口, 开机自启, 任务栏天气条[仅 Windows], 退出, 关于,
+    //  默认 tooltip, 窗口标题, 关于对话框说明)
     match lang {
         "zh" => (
             "显示主窗口".into(),
             "开机自启".into(),
             "任务栏天气条".into(),
             "退出".into(),
+            "关于".into(),
             "天气查询".into(),
             "天气查询".into(),
+            "查询任意城市实时天气与未来 7 天预报，并展示今天这个日期在过去 \
+             30 年的历史天气。数据来自 Open-Meteo。网页版与桌面版共用一套前端。"
+                .into(),
         ),
         _ => (
             "Show".into(),
             "Launch at login".into(),
             "Taskbar weather strip".into(),
             "Quit".into(),
-            "Weather".into(),
-            "Weather".into(),
+            "About".into(),
+            "GlassWeather".into(),
+            "GlassWeather".into(),
+            "Current weather and a 7-day forecast for any city, plus \
+             30 years of on-this-day history. Data from Open-Meteo. \
+             The website and desktop app share one frontend."
+                .into(),
         ),
     }
 }
@@ -56,7 +72,8 @@ fn tray_texts(lang: &str) -> (String, String, String, String, String, String) {
 /// 按语言构建托盘菜单并挂到托盘上。语言切换/自启勾选翻转时调用。
 /// tooltip 优先显示天气快照（城市 · 天气 · 温度），无天气数据时用语言默认文案。
 fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
-    let (t_show, t_auto, t_bar, t_quit, default_tip, title) = tray_texts(lang);
+    let (t_show, t_auto, t_bar, t_quit, t_about, default_tip, title, about_comments) =
+        tray_texts(lang);
     #[cfg(not(windows))]
     let _ = &t_bar;
 
@@ -70,6 +87,21 @@ fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, MENU_QUIT, t_quit, true, None::<&str>)?;
+    // 关于：PredefinedMenuItem 原生实现（Windows 弹 MessageBox，Linux 弹 GTK
+    // About 对话框），自动显示 name/version/authors/license/website/comments。
+    let about = PredefinedMenuItem::about(
+        app,
+        Some(&t_about),
+        Some(tauri::menu::AboutMetadataBuilder::new()
+            .name(Some("GlassWeather"))
+            .version(Some(APP_VERSION))
+            .authors(Some(vec!["secnotes".into()]))
+            .license(Some("MIT"))
+            .website(Some(APP_SITE))
+            .website_label(Some("GitHub"))
+            .comments(Some(about_comments))
+            .build()),
+    )?;
     let sep = PredefinedMenuItem::separator(app)?;
     #[cfg(windows)]
     let menu = {
@@ -81,10 +113,10 @@ fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
             bar_enabled(),
             None::<&str>,
         )?;
-        Menu::with_items(app, &[&show, &auto, &bar, &sep, &quit])?
+        Menu::with_items(app, &[&show, &auto, &bar, &about, &sep, &quit])?
     };
     #[cfg(not(windows))]
-    let menu = Menu::with_items(app, &[&show, &auto, &sep, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &auto, &about, &sep, &quit])?;
 
     // 窗口标题同样跟随语言（配置里的初始标题是英文兜底，前端启动后即被覆盖）
     if let Some(win) = app.get_webview_window("main") {
@@ -605,6 +637,22 @@ fn main() {
                 None::<&str>,
             )?;
             let quit = MenuItem::with_id(app, MENU_QUIT, "Quit", true, None::<&str>)?;
+            let about = PredefinedMenuItem::about(
+                app,
+                Some("About"),
+                Some(tauri::menu::AboutMetadataBuilder::new()
+                    .name(Some("GlassWeather"))
+                    .version(Some(APP_VERSION))
+                    .authors(Some(vec!["secnotes".into()]))
+                    .license(Some("MIT"))
+                    .website(Some(APP_SITE))
+                    .website_label(Some("GitHub"))
+                    .comments(Some(
+                        "Current weather and a 7-day forecast for any city, plus \
+                         30 years of on-this-day history. Data from Open-Meteo.",
+                    ))
+                    .build()),
+            )?;
             let sep = PredefinedMenuItem::separator(app)?;
             #[cfg(windows)]
             let menu = {
@@ -616,14 +664,14 @@ fn main() {
                     bar_on,
                     None::<&str>,
                 )?;
-                Menu::with_items(app, &[&show, &auto, &bar, &sep, &quit])?
+                Menu::with_items(app, &[&show, &auto, &bar, &about, &sep, &quit])?
             };
             #[cfg(not(windows))]
-            let menu = Menu::with_items(app, &[&show, &auto, &sep, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &auto, &about, &sep, &quit])?;
 
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("Weather")
+                .tooltip("GlassWeather")
                 .menu(&menu)
                 // 左键单击托盘 = 显示主窗口；菜单只在右键时弹出
                 .show_menu_on_left_click(false)
@@ -687,7 +735,7 @@ fn main() {
                 "popup",
                 WebviewUrl::App("tray-popup.html".into()),
             )
-            .title("Weather")
+            .title("GlassWeather")
             .inner_size(POPUP_W, POPUP_H)
             .visible(false)
             .decorations(false)
@@ -712,7 +760,7 @@ fn main() {
                     "bar",
                     WebviewUrl::App("tray-bar.html".into()),
                 )
-                .title("Weather")
+                .title("GlassWeather")
                 .inner_size(BAR_W, BAR_H)
                 .visible(false)
                 .decorations(false)

@@ -214,7 +214,7 @@ const I18N = {
     'footer-note': '（免费、开源）。卡片显示所选城市今天这个日期在过去 30 年的历史极值；首次加载约需 6 秒，之后缓存 30 天。',
   },
   en: {
-    title: 'Weather',
+    title: 'GlassWeather',
     subtitle: 'Current · 7-Day Forecast · 30-Year History',
     'search-ph': 'Search city, e.g. Beijing / Shanghai / Tokyo',
     'label-humidity': 'Humidity',

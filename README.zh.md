@@ -1,4 +1,4 @@
-# 天气查询 · 含过去 30 年今日天气
+# 天气查询 GlassWeather · 含过去 30 年今日天气
 
 **中文 | [English](README.md)**
 

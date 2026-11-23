@@ -1,4 +1,4 @@
-# Weather · With 30 Years of "On This Day" History
+# GlassWeather · With 30 Years of "On This Day" History
 
 **[中文](README.zh.md) | English**
 

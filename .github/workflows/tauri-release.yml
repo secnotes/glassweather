@@ -13,7 +13,20 @@ permissions:
   contents: write
 
 jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if tag does not match Cargo.toml version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CARGO_VER=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/version *= *"\(.*\)"/\1/')
+          if [ "$TAG" != "$CARGO_VER" ]; then
+            echo "::error::Tag v$TAG does not match Cargo.toml version $CARGO_VER"; exit 1
+          fi
+
   build-windows:
+    needs: check-version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,12 +52,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Weather Desktop ${{ github.ref_name }}'
+          releaseName: 'GlassWeather ${{ github.ref_name }}'
           releaseBody: '桌面版安装包（Windows 为 .msi/.exe，Linux 为 .deb/AppImage）。下载对应平台的附件即可。'
           releaseDraft: true
           prerelease: false
 
   build-linux:
+    needs: check-version
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +89,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Weather Desktop ${{ github.ref_name }}'
+          releaseName: 'GlassWeather ${{ github.ref_name }}'
           releaseBody: '桌面版安装包（Windows 为 .msi/.exe，Linux 为 .deb/AppImage）。下载对应平台的附件即可。'
           releaseDraft: true
           prerelease: false
