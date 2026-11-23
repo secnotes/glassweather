@@ -2,7 +2,9 @@
 
 **[中文](README.zh.md) | English**
 
-A purely front-end static weather website (bilingual Chinese/English), deployable on GitHub Pages, and also suitable for wrapping as an app or WeChat Mini Program. Look up current weather and a 7-day forecast for any city, plus **historical data for today's date over the past 30 years** for the selected city. Microsoft's MSN Weather used to be ad-free and offered a genuinely useful feature: for any date, it could show the number of precipitation days and the highest or lowest temperatures over the past thirty years. Sadly, those unique features were later retired. So I wanted a weather assistant of my own — one that makes up for the shortcomings of common apps like weather.com.cn and Moji Weather, with the cards I like.
+A purely front-end static weather website (bilingual Chinese/English) that can be wrapped into a desktop app, a mobile app, or a WeChat Mini Program. Look up current weather and a 7-day forecast for any city, plus **historical data for today's date over the past 30 years** for the selected city.
+
+Microsoft's MSN Weather used to be free of annoying news feeds and terrible ads — a clean, genuinely useful weather tool. It even had some unique features, like showing the number of precipitation days and the highest or lowest temperatures on this date over the past thirty years. Sadly, the useful features were retired while the useless ads took over the screen. So I wanted a weather assistant of my own — one that makes up for the shortcomings of common apps like weather.com.cn and Moji Weather, with the cards I like.
 
 ## Features
 
@@ -23,17 +25,6 @@ A purely front-end static weather website (bilingual Chinese/English), deployabl
   - 🌧️ Max precipitation: the largest precipitation on this date in 30 years, with year and date
   - 🔥 Highest temperature: the highest temperature on this date in 30 years, with year and date
   - ❄️ Lowest temperature: the lowest temperature on this date in 30 years, with year and date
-
-## Data Sources
-
-All from [Open-Meteo](https://open-meteo.com/) (free, open source, no API key, CORS enabled):
-
-| Purpose | Endpoint |
-| --- | --- |
-| City search | `geocoding-api.open-meteo.com` |
-| Current weather + 7-day forecast | `api.open-meteo.com/v1/forecast` |
-| 30-year daily history | `archive-api.open-meteo.com/v1/archive` |
-| Air quality (PM2.5/PM10/O₃/NO₂/SO₂/CO concentrations + US AQI) | `air-quality-api.open-meteo.com/v1/air-quality` |
 
 ## Performance & Caching
 
@@ -57,18 +48,9 @@ npx serve .
 
 You can also double-click `index.html` to open it via `file://` (the APIs allow CORS, so it works fine). Note: browser Geolocation requires a secure context (HTTPS or localhost); most browsers disable it on `file://`, in which case the site falls back to Beijing.
 
-## Desktop App (Tauri)
+## Desktop App
 
-The repo also ships a Tauri 2 desktop shell (`src-tauri/`). It **reuses the same frontend** — `index.html` / `app.js` / `style.css` at the repo root are copied into `dist/` by `copy-frontend.js` and embedded in the installer. The website and the app share one source tree, and GitHub Pages deployment is unaffected.
-
-Desktop features:
-
-- A standalone window loading the site (WebKitGTK on Linux, system WebView2 on Windows — small installers)
-- System tray: left-click restores the window; the right-click menu offers Show / Launch-at-login toggle / Quit
-- Tray weather: the tray icon changes with the current conditions (8 glyphs — clear day/night, partly cloudy, overcast, fog, rain, snow, thunder — switching automatically with time of day and language). Hovering the icon shows a detail card (temperature, feels-like, humidity, wind, pressure, AQI, tomorrow's forecast); clicking the card opens the main window
-- Closing the window minimizes to the tray; use Quit in the tray menu to exit
-
-**Local development on Linux** (Debian / Ubuntu / Kali):
+### Linux (Debian / Ubuntu / Kali):
 
 ```bash
 # System deps + Rust (rustc >= 1.77.5; distro packages or rustup both work)
@@ -80,25 +62,21 @@ npx tauri dev      # run in development
 npx tauri build    # produces .deb / AppImage under src-tauri/target/release/bundle/
 ```
 
-**Windows**: easiest is to grab the `.msi` / `.exe` installer from [GitHub Releases](https://github.com/secnotes/weather/releases). Pushing a `v*` tag triggers the GitHub Actions workflow (`.github/workflows/tauri-release.yml`), which builds and publishes Windows and Linux installers to Releases.
+### Windows
 
-**Building locally on Windows**:
+Install the prerequisites (one-time):
 
-1. Install the prerequisites (one-time):
-   - **Rust**: run the [rustup-init.exe](https://rustup.rs) installer with default options (toolchain `stable-x86_64-pc-windows-msvc`)
-   - **Visual Studio 2022 Build Tools**: select the "Desktop development with C++" workload (MSVC v143 + Windows 11 SDK included), ~3-4 GB
-   - **Node.js** ≥ 18 (only used for the Tauri CLI)
-   - WebView2 ships with Windows 10/11 — nothing extra to install
-2. Build:
+- **Rust**: run the [rustup-init.exe](https://rustup.rs) installer with default options (toolchain `stable-x86_64-pc-windows-msvc`)
+- **Visual Studio 2022 Build Tools**: select the "Desktop development with C++" workload (MSVC v143 + Windows 11 SDK included), ~3-4 GB
+- **Node.js** ≥ 18 (only used for the Tauri CLI)
+- WebView2 ships with Windows 10/11 — nothing extra to install
 
-   ```bash
-   npm install
-   npx tauri build
-   ```
+Build:
 
-3. Pick either artifact produced under `src-tauri/target/release/bundle/`:
-   - `msi/Weather_x.y.z_x64_en-US.msi`
-   - `nsis/Weather_x.y.z_x64-setup.exe`
+```bash
+npm install
+npx tauri build
+```
 
 **Speeding up downloads from mainland China** (when direct access is slow or blocked):
 
@@ -125,7 +103,19 @@ Notes:
 - GNOME hides tray icons by default; install the AppIndicator/KStatusNotifier extension. KDE / XFCE support it natively
 - The tray hover card works on all three platforms (Linux detects hover via cursor polling, so a slight delay is normal)
 - Windows 11 tucks new apps into the hidden tray overflow by default; enable them under Taskbar settings → Other system tray icons, or drag the icon onto the taskbar
+- The Windows taskbar weather strip is an always-on-top mini window and stays visible over fullscreen apps (videos, games); mention it if you'd rather have it removed
 - Weather icons are emoji; install `fonts-noto-color-emoji` on Linux
+
+## Data Sources
+
+All from [Open-Meteo](https://open-meteo.com/) (free, open source, no API key, CORS enabled):
+
+| Purpose | Endpoint |
+| --- | --- |
+| City search | `geocoding-api.open-meteo.com` |
+| Current weather + 7-day forecast | `api.open-meteo.com/v1/forecast` |
+| 30-year daily history | `archive-api.open-meteo.com/v1/archive` |
+| Air quality (PM2.5/PM10/O₃/NO₂/SO₂/CO concentrations + US AQI) | `air-quality-api.open-meteo.com/v1/air-quality` |
 
 ## Notes
 

@@ -15,10 +15,10 @@
   body {
     font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", system-ui, sans-serif;
     color: #f5f7fa;
+    /* 圆角由系统 DWM 处理（Rust 侧 DWMWCP_ROUND）；此处不再画 CSS 圆角/描边，
+       避免与系统圆角形成每个顶角两条不重合的弧线 */
     background: linear-gradient(160deg, #0f2027, #203a43 55%, #2c5364);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 12px;
-    padding: 14px 16px 12px;
+    padding: 14px 16px 18px;
     cursor: default;
   }
   .row1 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -36,6 +36,7 @@
   .grid .k { color: rgba(245,247,250,0.60); white-space: nowrap; }
   .grid .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tm { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .tm + .tm { margin-top: 4px; }
   .tm .k { color: rgba(245,247,250,0.60); }
   .tm .emoji { font-size: 15px; }
   .tm .t { margin-left: auto; }
@@ -67,6 +68,12 @@
       <span class="emoji" id="tm-emoji"></span>
       <span id="tm-desc"></span>
       <span class="t" id="tm-range"></span>
+    </div>
+    <div class="tm" id="tm2-row">
+      <span class="k" data-l="后天|Day+2"></span>
+      <span class="emoji" id="tm2-emoji"></span>
+      <span id="tm2-desc"></span>
+      <span class="t" id="tm2-range"></span>
     </div>
   </div>
   <div class="empty" id="empty">…</div>
@@ -108,6 +115,16 @@ function render(s) {
   document.getElementById('tm-emoji').textContent = s.tmEmoji;
   document.getElementById('tm-desc').textContent = s.tmDesc;
   document.getElementById('tm-range').textContent = s.tmMin + '° ~ ' + s.tmMax + '°';
+  // 后天行：数据不足 3 天（tm2Desc 为空）时隐藏
+  var tm2 = document.getElementById('tm2-row');
+  if (s.tm2Desc == null) {
+    tm2.style.display = 'none';
+  } else {
+    tm2.style.display = '';
+    document.getElementById('tm2-emoji').textContent = s.tm2Emoji;
+    document.getElementById('tm2-desc').textContent = s.tm2Desc;
+    document.getElementById('tm2-range').textContent = s.tm2Min + '° ~ ' + s.tm2Max + '°';
+  }
 }
 function readOnce() {
   try {

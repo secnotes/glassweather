@@ -91,6 +91,11 @@ function buildTraySnapshot() {
     tmDesc: wmoText(d.weather_code[1]),
     tmMin: Math.round(d.temperature_2m_min[1]),
     tmMax: Math.round(d.temperature_2m_max[1]),
+    // 后天预报（数据不足 3 天时置 null，弹窗侧隐藏该行）
+    tm2Emoji: d.weather_code[2] != null ? wmoEmoji(d.weather_code[2]) : null,
+    tm2Desc: d.weather_code[2] != null ? wmoText(d.weather_code[2]) : null,
+    tm2Min: d.temperature_2m_min[2] != null ? Math.round(d.temperature_2m_min[2]) : null,
+    tm2Max: d.temperature_2m_max[2] != null ? Math.round(d.temperature_2m_max[2]) : null,
     ts: Date.now(),
   };
   return snap;

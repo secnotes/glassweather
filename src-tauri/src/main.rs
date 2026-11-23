@@ -12,27 +12,32 @@ use std::time::Duration;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, PhysicalPosition, Position as DpiPosition, Size as DpiSize, WebviewUrl,
-    WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
+#[cfg(not(windows))]
+use tauri::{Position as DpiPosition, Size as DpiSize};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 const MENU_SHOW: &str = "show";
 const MENU_AUTOSTART: &str = "autostart";
 const MENU_QUIT: &str = "quit";
+#[cfg(windows)]
+const MENU_BAR: &str = "bar";
 
 const POPUP_W: f64 = 320.0;
-const POPUP_H: f64 = 192.0;
+const POPUP_H: f64 = 218.0;
 
 /* ============================ 语言 / 托盘菜单 ============================ */
 
 /// 托盘菜单与窗口标题文案（跟随前端语言，前端初始化/切换语言时会调用 set_tray_lang）
-fn tray_texts(lang: &str) -> (String, String, String, String, String) {
-    // (显示主窗口, 开机自启, 退出, 默认 tooltip, 窗口标题)
+fn tray_texts(lang: &str) -> (String, String, String, String, String, String) {
+    // (显示主窗口, 开机自启, 任务栏天气条[仅 Windows], 退出, 默认 tooltip, 窗口标题)
     match lang {
         "zh" => (
             "显示主窗口".into(),
             "开机自启".into(),
+            "任务栏天气条".into(),
             "退出".into(),
             "天气查询".into(),
             "天气查询".into(),
@@ -40,6 +45,7 @@ fn tray_texts(lang: &str) -> (String, String, String, String, String) {
         _ => (
             "Show".into(),
             "Launch at login".into(),
+            "Taskbar weather strip".into(),
             "Quit".into(),
             "Weather".into(),
             "Weather".into(),
@@ -50,7 +56,9 @@ fn tray_texts(lang: &str) -> (String, String, String, String, String) {
 /// 按语言构建托盘菜单并挂到托盘上。语言切换/自启勾选翻转时调用。
 /// tooltip 优先显示天气快照（城市 · 天气 · 温度），无天气数据时用语言默认文案。
 fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
-    let (t_show, t_auto, t_quit, default_tip, title) = tray_texts(lang);
+    let (t_show, t_auto, t_bar, t_quit, default_tip, title) = tray_texts(lang);
+    #[cfg(not(windows))]
+    let _ = &t_bar;
 
     let show = MenuItem::with_id(app, MENU_SHOW, t_show, true, None::<&str>)?;
     let auto = CheckMenuItem::with_id(
@@ -63,6 +71,19 @@ fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
     )?;
     let quit = MenuItem::with_id(app, MENU_QUIT, t_quit, true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
+    #[cfg(windows)]
+    let menu = {
+        let bar = CheckMenuItem::with_id(
+            app,
+            MENU_BAR,
+            t_bar,
+            true,
+            bar_enabled(),
+            None::<&str>,
+        )?;
+        Menu::with_items(app, &[&show, &auto, &bar, &sep, &quit])?
+    };
+    #[cfg(not(windows))]
     let menu = Menu::with_items(app, &[&show, &auto, &sep, &quit])?;
 
     // 窗口标题同样跟随语言（配置里的初始标题是英文兜底，前端启动后即被覆盖）
@@ -229,9 +250,194 @@ fn set_tray_weather(app: AppHandle, snapshot: WeatherPayload) -> Result<(), Stri
 
 /* ============================ 悬停详情弹窗 ============================ */
 
+#[cfg(not(windows))]
 static POPUP_GEN: OnceLock<Mutex<u64>> = OnceLock::new();
+#[cfg(not(windows))]
 fn popup_gen() -> &'static Mutex<u64> {
     POPUP_GEN.get_or_init(|| Mutex::new(0))
+}
+
+/* ============================ Windows 任务栏天气条 ============================ */
+
+/* Windows 没有第三方任务栏嵌入接口（Win11 已移除 desk band）。等价实现：在
+   任务栏正上方的屏幕角落常驻一个迷你天气条（无边框/置顶/不进任务栏的透明
+   webview 小窗，显示图标 + 温度）。悬停它弹出完整详情卡片（光标轮询驱动，
+   150ms），点击打开主窗口；托盘图标则只保留系统原生 tooltip（一句话天气），
+   避免卡片与 tooltip 双重提示。
+   tray-icon 0.25 的 Leave 检测有缺陷：15ms 定时器用 last_position.take() 一次
+   性取值，鼠标在图标上静止超一个周期后移出时 Leave 永不触发。因此 Windows
+   上弹窗的显示与隐藏完全改用光标轮询判定，不再依赖托盘 Enter/Leave 事件。 */
+#[cfg(windows)]
+const BAR_W: f64 = 148.0;
+#[cfg(windows)]
+const BAR_H: f64 = 44.0;
+
+/// 任务栏天气条开关（托盘菜单「任务栏天气条」勾选项），持久化于应用配置目录
+#[cfg(windows)]
+static BAR_ENABLED: OnceLock<Mutex<bool>> = OnceLock::new();
+#[cfg(windows)]
+fn bar_enabled_store() -> &'static Mutex<bool> {
+    BAR_ENABLED.get_or_init(|| Mutex::new(true))
+}
+#[cfg(windows)]
+fn bar_enabled() -> bool {
+    *bar_enabled_store().lock().unwrap()
+}
+
+#[cfg(windows)]
+fn settings_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("bar.cfg"))
+}
+
+/// 启动时读入持久化开关（无配置文件时默认开启）
+#[cfg(windows)]
+fn load_bar_setting(app: &AppHandle) -> bool {
+    let on = settings_path(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim() == "on")
+        .unwrap_or(true);
+    *bar_enabled_store().lock().unwrap() = on;
+    on
+}
+
+#[cfg(windows)]
+fn save_bar_setting(app: &AppHandle, on: bool) {
+    if let Some(p) = settings_path(app) {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&p, if on { "on" } else { "off" });
+    }
+}
+
+/// 显示/隐藏任务栏天气条（关闭时连带收起详情弹窗）。显示/隐藏都走原生
+/// SW_SHOWNOACTIVATE / SW_HIDE，与 poll_bar_hover 的路径对称。
+#[cfg(windows)]
+fn set_bar_visible(app: &AppHandle, on: bool) {
+    let Some(bar) = app.get_webview_window("bar") else { return };
+    if on {
+        place_bar(app);
+        popup_show_raw(&bar);
+    } else {
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+        if let Ok(hwnd) = bar.hwnd() {
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+            }
+        } else {
+            let _ = bar.hide();
+        }
+        hide_popup(app);
+    }
+}
+
+/// 把天气条放到主显示器工作区（已扣除任务栏）的右下角
+#[cfg(windows)]
+fn place_bar(app: &AppHandle) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SystemParametersInfoW, SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    };
+
+    let Some(bar) = app.get_webview_window("bar") else { return };
+    let sf = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let (bw, bh) = ((BAR_W * sf) as i32, (BAR_H * sf) as i32);
+    unsafe {
+        let mut wa = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            Some(&mut wa as *mut _ as _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+        .is_ok()
+        {
+            let x = wa.right - bw - 10;
+            let y = wa.bottom - bh - 4;
+            let _ = bar.set_position(PhysicalPosition::new(x, y));
+        }
+    }
+}
+
+/// 在天气条正上方（右对齐）显示详情弹窗
+#[cfg(windows)]
+fn show_popup_above_bar(app: &AppHandle, bar_rect: &windows::Win32::Foundation::RECT) {
+    let Some(win) = app.get_webview_window("popup") else { return };
+    let sf = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let (pw, ph) = ((POPUP_W * sf) as i32, (POPUP_H * sf) as i32);
+    let x = bar_rect.right - pw;
+    let y = bar_rect.top - ph - 6;
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+    popup_show_raw(&win);
+}
+
+/// 光标轮询状态机（每 150ms）：
+/// 悬停天气条（外扩 6px）→ 弹窗显示在其正上方（已显示则不重复操作）；
+/// 离开条且弹窗可见时，光标也不在弹窗上（外扩 10px 盖缝隙）→ 隐藏弹窗；
+/// 光标停在弹窗上 → 保持显示（用户在读卡片）。
+#[cfg(windows)]
+fn poll_bar_hover(app: &AppHandle) {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetCursorPos, GetWindowRect, IsWindowVisible,
+    };
+
+    let Some(bar) = app.get_webview_window("bar") else { return };
+    let Ok(bar_hwnd) = bar.hwnd() else { return };
+    let Some(popup) = app.get_webview_window("popup") else { return };
+    let Ok(popup_hwnd) = popup.hwnd() else { return };
+
+    unsafe {
+        // 天气条被托盘菜单关闭（隐藏）时，悬停判定整体跳过
+        if !IsWindowVisible(bar_hwnd).as_bool() {
+            return;
+        }
+        let mut cursor = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut cursor).is_err() {
+            return;
+        }
+        let mut br = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if GetWindowRect(bar_hwnd, &mut br).is_err() {
+            return;
+        }
+
+        // 悬停天气条 → 显示（或保持）弹窗
+        if cursor.x >= br.left - 6 && cursor.x <= br.right + 6
+            && cursor.y >= br.top - 6 && cursor.y <= br.bottom + 6
+        {
+            if !IsWindowVisible(popup_hwnd).as_bool() {
+                show_popup_above_bar(app, &br);
+            }
+            return;
+        }
+
+        // 不在条上：弹窗不可见就无事可做
+        if !IsWindowVisible(popup_hwnd).as_bool() {
+            return;
+        }
+        // 光标在弹窗上（外扩 10px）→ 保持
+        let mut pr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if GetWindowRect(popup_hwnd, &mut pr).is_ok()
+            && cursor.x >= pr.left - 10 && cursor.x <= pr.right + 10
+            && cursor.y >= pr.top - 10 && cursor.y <= pr.bottom + 10
+        {
+            return;
+        }
+    }
+    hide_popup(app);
 }
 
 /// 不抢前台焦点地显示窗口（Windows：SW_SHOWNOACTIVATE；其他平台直接 show，
@@ -254,8 +460,32 @@ fn popup_show_raw(win: &WebviewWindow) {
     let _ = win.show();
 }
 
+/* Windows 11 系统级窗口圆角（与任务栏/开始菜单同款效果）。WebView2 透明
+   背景在 Tauri 下不可靠（CSS 圆角会被方形窗口裁掉），改用 DWM 圆角。
+   Win10 无此属性时静默失败，窗口保持直角，不影响功能。 */
+#[cfg(windows)]
+fn apply_rounded_corners(win: &WebviewWindow) {
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+        DWM_WINDOW_CORNER_PREFERENCE,
+    };
+    if let Ok(hwnd) = win.hwnd() {
+        let pref = DWMWCP_ROUND;
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &pref as *const _ as _,
+                std::mem::size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+            );
+        }
+    }
+}
+
 /// 依据托盘图标矩形定位并显示弹窗：底部任务栏显示在图标上方，顶部任务栏显示在下方。
 /// 托盘事件给的是 dpi::Position/Size（可能是逻辑坐标），先统一换物理坐标。
+/// （仅非 Windows：Windows 上弹窗由任务栏天气条悬停驱动，托盘图标只出原生 tooltip。）
+#[cfg(not(windows))]
 fn show_popup(app: &AppHandle, icon_pos: DpiPosition, icon_size: DpiSize) {
     // 任意 Enter 都作废旧的延迟隐藏计划
     *popup_gen().lock().unwrap() += 1;
@@ -305,14 +535,28 @@ fn show_popup(app: &AppHandle, icon_pos: DpiPosition, icon_size: DpiSize) {
     popup_show_raw(&win);
 }
 
+/* Windows 上弹窗的显示走原生 SW_SHOWNOACTIVATE（绕过框架），框架内部的
+   可见状态仍记为"隐藏"，其 hide() 会误判无事可做直接跳过——弹窗因此永远
+   关不掉。隐藏同样走原生 SW_HIDE，显示/隐藏对称，不经过框架状态跟踪。 */
 fn hide_popup(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("popup") {
+        #[cfg(windows)]
+        {
+            use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+            if let Ok(hwnd) = win.hwnd() {
+                unsafe {
+                    let _ = ShowWindow(hwnd, SW_HIDE);
+                }
+                return;
+            }
+        }
         let _ = win.hide();
     }
 }
 
 /// 鼠标离开托盘图标后延迟隐藏（经过图标与弹窗之间缝隙、短暂划过都不会闪）；
-/// 期间再次 Enter 会令本次计划作废。
+/// 期间再次 Enter 会令本次计划作废。（仅非 Windows。）
+#[cfg(not(windows))]
 fn schedule_popup_hide(app: &AppHandle) {
     let gen = {
         let mut g = popup_gen().lock().unwrap();
@@ -349,6 +593,8 @@ fn main() {
         .setup(|app| {
             // 初始菜单：英文兜底；前端启动检测到桌面环境后会带上用户
             // 记忆的语言立即调用 set_tray_lang 覆盖（见 app.js 桥接）。
+            #[cfg(windows)]
+            let bar_on = load_bar_setting(&app.handle().clone());
             let show = MenuItem::with_id(app, MENU_SHOW, "Show", true, None::<&str>)?;
             let auto = CheckMenuItem::with_id(
                 app,
@@ -360,6 +606,19 @@ fn main() {
             )?;
             let quit = MenuItem::with_id(app, MENU_QUIT, "Quit", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
+            #[cfg(windows)]
+            let menu = {
+                let bar = CheckMenuItem::with_id(
+                    app,
+                    MENU_BAR,
+                    "Taskbar weather strip",
+                    true,
+                    bar_on,
+                    None::<&str>,
+                )?;
+                Menu::with_items(app, &[&show, &auto, &bar, &sep, &quit])?
+            };
+            #[cfg(not(windows))]
             let menu = Menu::with_items(app, &[&show, &auto, &sep, &quit])?;
 
             TrayIconBuilder::with_id("main")
@@ -386,6 +645,15 @@ fn main() {
                         // 取反后重建菜单（同时刷新勾选态）
                         let _ = rebuild_tray(app, &current_lang(app));
                     }
+                    #[cfg(windows)]
+                    MENU_BAR => {
+                        // 任务栏天气条开关：翻转 + 持久化 + 立即生效（关则连带收起弹窗）
+                        let on = !bar_enabled();
+                        *bar_enabled_store().lock().unwrap() = on;
+                        save_bar_setting(app, on);
+                        set_bar_visible(app, on);
+                        let _ = rebuild_tray(app, &current_lang(app));
+                    }
                     MENU_QUIT => app.exit(0),
                     _ => {}
                 })
@@ -400,9 +668,13 @@ fn main() {
                         show_main_window(app);
                     }
                     // 悬停托盘图标 → 图标旁弹详情卡片；离开 → 延迟收起
+                    // （仅非 Windows；Windows 上托盘图标只出原生 tooltip，
+                    //  详情卡片由任务栏天气条悬停触发，见下方 poll_bar_hover）
+                    #[cfg(not(windows))]
                     TrayIconEvent::Enter { rect, .. } => {
                         show_popup(tray.app_handle(), rect.position, rect.size)
                     }
+                    #[cfg(not(windows))]
                     TrayIconEvent::Leave { .. } => schedule_popup_hide(tray.app_handle()),
                     _ => {}
                 })
@@ -425,6 +697,45 @@ fn main() {
             .focused(false)
             .shadow(true)
             .build()?;
+            #[cfg(windows)]
+            if let Some(popup_win) = app.get_webview_window("popup") {
+                apply_rounded_corners(&popup_win);
+            }
+
+            // Windows 任务栏天气条：常驻迷你小窗（图标+温度），悬停弹详情卡片，
+            // 点击打开主窗口（页面 tray-bar.html，读同一份 localStorage 快照）。
+            // 透明窗口 + 页面自身圆角/边框，视觉上就是任务栏上的一块小区域。
+            #[cfg(windows)]
+            {
+                let bar = WebviewWindowBuilder::new(
+                    app,
+                    "bar",
+                    WebviewUrl::App("tray-bar.html".into()),
+                )
+                .title("Weather")
+                .inner_size(BAR_W, BAR_H)
+                .visible(false)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .focused(false)
+                .shadow(false)
+                .build()?;
+                let app_handle = app.handle().clone();
+                apply_rounded_corners(&bar);
+                if bar_on {
+                    place_bar(&app_handle);
+                    popup_show_raw(&bar);
+                }
+
+                // 悬停判定 + 弹窗显示/隐藏：光标轮询驱动（150ms，纯 Win32 调用，
+                // 不碰 Tauri 异步 API，规避后台线程限制）。
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(Duration::from_millis(150));
+                    poll_bar_hover(&app_handle);
+                });
+            }
 
             // 慢机（VMware 软渲染）上 __TAURI__ 全局对象注入可能晚于前端脚本执行，
             // 前端的 retry 兜底不一定赶上。改为 Rust 侧轮询驱动：定期 eval 一段 JS
