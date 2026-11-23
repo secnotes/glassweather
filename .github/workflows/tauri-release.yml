@@ -53,7 +53,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'GlassWeather ${{ github.ref_name }}'
-          releaseBody: '桌面版安装包（Windows 为 .msi/.exe，Linux 为 .deb/AppImage）。下载对应平台的附件即可。'
+          releaseBody: 'Desktop installers. Windows: .msi/.exe; Linux: .deb/.rpm/AppImage. Pick the one for your platform.'
           releaseDraft: true
           prerelease: false
 
@@ -90,6 +90,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'GlassWeather ${{ github.ref_name }}'
-          releaseBody: '桌面版安装包（Windows 为 .msi/.exe，Linux 为 .deb/AppImage）。下载对应平台的附件即可。'
+          releaseBody: 'Desktop installers. Windows: .msi/.exe; Linux: .deb/.rpm/AppImage. Pick the one for your platform.'
           releaseDraft: true
           prerelease: false
