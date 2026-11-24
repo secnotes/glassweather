@@ -57,14 +57,19 @@ jobs:
           releaseDraft: true
           prerelease: false
 
-      # 免安装单文件版：直接附加到 Release（网页版下载即用，无安装过程）
-      - name: Attach portable exe
+      # 免安装版：打 zip 附加到 Release（下载解压即用，无安装过程）。
+      # deskband11lib.dll 是运行时依赖（Win11 任务栏天气功能加载），必须与 exe
+      # 同目录，因此与 exe 一起进 zip——单发 exe 会静默缺失任务栏天气功能。
+      - name: Attach portable zip
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp src-tauri/target/release/weather.exe "GlassWeather_${{ github.ref_name }}_x64_portable.exe"
-          gh release upload "${{ github.ref_name }}" "GlassWeather_${{ github.ref_name }}_x64_portable.exe" --clobber
+          mkdir portable
+          cp src-tauri/target/release/glassweather.exe portable/
+          cp src-tauri/target/release/deskband11lib.dll portable/
+          powershell Compress-Archive portable "GlassWeather_${{ github.ref_name }}_x64_portable.zip"
+          gh release upload "${{ github.ref_name }}" "GlassWeather_${{ github.ref_name }}_x64_portable.zip" --clobber
         shell: bash
 
   build-linux:

@@ -24,74 +24,162 @@ const MENU_AUTOSTART: &str = "autostart";
 const MENU_QUIT: &str = "quit";
 #[cfg(windows)]
 const MENU_BAR: &str = "bar";
+/// 任务栏天气（Win11 deskband）菜单项
+#[cfg(windows)]
+const MENU_DESKBAND: &str = "deskband";
+#[cfg(windows)]
+const DESKBAND_LABEL: &str = "deskband";
+/// 任务栏天气位置子菜单：取值即 Deskband11Lib 的 TaskbarContentPlacement
+#[cfg(windows)]
+const MENU_PLACE: &str = "place";
+#[cfg(windows)]
+const PLACE_AUTO: &str = "place-auto";
+#[cfg(windows)]
+const PLACE_LEFT: &str = "place-left";
+#[cfg(windows)]
+const PLACE_BEFORE_NOTIF: &str = "place-before-notif";
+#[cfg(windows)]
+const PLACE_BEFORE_START: &str = "place-before-start";
+
+/// 任务栏天气位置（持久化于 deskband-place.cfg，值为上述 MENU_PLACE_* id）
+#[cfg(windows)]
+static DESKBAND_PLACE: OnceLock<Mutex<String>> = OnceLock::new();
+#[cfg(windows)]
+fn deskband_place_store() -> &'static Mutex<String> {
+    DESKBAND_PLACE.get_or_init(|| Mutex::new(PLACE_AUTO.into()))
+}
+#[cfg(windows)]
+fn deskband_place() -> String {
+    deskband_place_store().lock().unwrap().clone()
+}
+
+#[cfg(windows)]
+fn placement_from_id(id: &str) -> Option<tauri_plugin_deskband11lib::TaskbarContentPlacement> {
+    use tauri_plugin_deskband11lib::TaskbarContentPlacement;
+    match id {
+        PLACE_AUTO => Some(TaskbarContentPlacement::Auto),
+        PLACE_LEFT => Some(TaskbarContentPlacement::LeftEdge),
+        PLACE_BEFORE_NOTIF => Some(TaskbarContentPlacement::BeforeNotificationArea),
+        PLACE_BEFORE_START => Some(TaskbarContentPlacement::BeforeStartButton),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn load_place_setting(app: &AppHandle) -> String {
+    let id = cfg_path(app, "deskband-place.cfg")
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| placement_from_id(s).is_some())
+        .unwrap_or_else(|| PLACE_AUTO.into());
+    *deskband_place_store().lock().unwrap() = id.clone();
+    id
+}
+
+#[cfg(windows)]
+fn save_place_setting(app: &AppHandle, id: &str) {
+    if let Some(p) = cfg_path(app, "deskband-place.cfg") {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&p, id);
+    }
+}
 
 /// 应用版本（来自 Cargo.toml，发版时只需改 Cargo.toml 的 version 字段）
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const APP_SITE: &str = "https://github.com/secnotes/glassweather";
 
 const POPUP_W: f64 = 320.0;
-const POPUP_H: f64 = 218.0;
+const POPUP_H: f64 = 224.0;
 
 /* ============================ 语言 / 托盘菜单 ============================ */
 
-/// 托盘菜单与窗口标题文案（跟随前端语言，前端初始化/切换语言时会调用 set_tray_lang）
-fn tray_texts(
-    lang: &str,
-) -> (String, String, String, String, String, String, String, String) {
-    // (显示主窗口, 开机自启, 任务栏天气条[仅 Windows], 退出, 关于,
-    //  默认 tooltip, 窗口标题, 关于对话框说明)
+/// 托盘菜单与窗口标题文案（跟随前端语言，前端初始化/切换语言时会调用 set_tray_lang）。
+/// 字段增多后由 tuple 重构为 struct，便于增删条目。
+struct TrayTexts {
+    show: String,
+    autostart: String,
+    /// 悬浮天气条（Win：任务栏上方的常驻迷你小窗）
+    floating_bar: String,
+    /// 任务栏天气（Win11 deskband：真正嵌进任务栏内部）
+    deskband: String,
+    /// 任务栏天气位置子菜单标题
+    deskband_place: String,
+    /// 位置选项：自动 / 开始按钮旁 / 远端(Widgets 后) / 通知区左侧
+    place_auto: String,
+    place_left: String,
+    place_before_notif: String,
+    place_before_start: String,
+    quit: String,
+    about: String,
+    default_tooltip: String,
+    title: String,
+    about_comments: String,
+}
+
+fn tray_texts(lang: &str) -> TrayTexts {
     match lang {
-        "zh" => (
-            "显示主窗口".into(),
-            "开机自启".into(),
-            "任务栏天气条".into(),
-            "退出".into(),
-            "关于".into(),
-            "天气查询".into(),
-            "天气查询".into(),
-            "查询任意城市实时天气与未来 7 天预报，并展示今天这个日期在过去 \
-             30 年的历史天气。数据来自 Open-Meteo。网页版与桌面版共用一套前端。"
+        "zh" => TrayTexts {
+            show: "显示主窗口".into(),
+            autostart: "开机自启".into(),
+            floating_bar: "悬浮天气条".into(),
+            deskband: "任务栏天气".into(),
+            deskband_place: "任务栏天气位置".into(),
+            place_auto: "自动".into(),
+            place_left: "远端（Widgets 后）".into(),
+            place_before_notif: "通知区左侧".into(),
+            place_before_start: "开始按钮旁".into(),
+            quit: "退出".into(),
+            about: "关于".into(),
+            default_tooltip: "天气查询".into(),
+            title: "天气查询".into(),
+            about_comments: "查询任意城市实时天气与未来 7 天预报，并展示今天这个日期在过去 \
+                 30 年的历史天气。数据来自 Open-Meteo。网页版与桌面版共用一套前端。"
                 .into(),
-        ),
-        _ => (
-            "Show".into(),
-            "Launch at login".into(),
-            "Taskbar weather strip".into(),
-            "Quit".into(),
-            "About".into(),
-            "GlassWeather".into(),
-            "GlassWeather".into(),
-            "Current weather and a 7-day forecast for any city, plus \
-             30 years of on-this-day history. Data from Open-Meteo. \
-             The website and desktop app share one frontend."
+        },
+        _ => TrayTexts {
+            show: "Show".into(),
+            autostart: "Launch at login".into(),
+            floating_bar: "Floating weather strip".into(),
+            deskband: "Taskbar weather".into(),
+            deskband_place: "Taskbar weather position".into(),
+            place_auto: "Auto".into(),
+            place_left: "Far end (after Widgets)".into(),
+            place_before_notif: "Before notification area".into(),
+            place_before_start: "Next to Start button".into(),
+            quit: "Quit".into(),
+            about: "About".into(),
+            default_tooltip: "GlassWeather".into(),
+            title: "GlassWeather".into(),
+            about_comments: "Current weather and a 7-day forecast for any city, plus \
+                 30 years of on-this-day history. Data from Open-Meteo. \
+                 The website and desktop app share one frontend."
                 .into(),
-        ),
+        },
     }
 }
 
 /// 按语言构建托盘菜单并挂到托盘上。语言切换/自启勾选翻转时调用。
 /// tooltip 优先显示天气快照（城市 · 天气 · 温度），无天气数据时用语言默认文案。
 fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
-    let (t_show, t_auto, t_bar, t_quit, t_about, default_tip, title, about_comments) =
-        tray_texts(lang);
-    #[cfg(not(windows))]
-    let _ = &t_bar;
+    let t = tray_texts(lang);
 
-    let show = MenuItem::with_id(app, MENU_SHOW, t_show, true, None::<&str>)?;
+    let show = MenuItem::with_id(app, MENU_SHOW, t.show, true, None::<&str>)?;
     let auto = CheckMenuItem::with_id(
         app,
         MENU_AUTOSTART,
-        t_auto,
+        t.autostart,
         true,
         app.autolaunch().is_enabled().unwrap_or(false),
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, MENU_QUIT, t_quit, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, MENU_QUIT, t.quit, true, None::<&str>)?;
     // 关于：PredefinedMenuItem 原生实现（Windows 弹 MessageBox，Linux 弹 GTK
     // About 对话框），自动显示 name/version/authors/license/website/comments。
     let about = PredefinedMenuItem::about(
         app,
-        Some(&t_about),
+        Some(&t.about),
         Some(tauri::menu::AboutMetadataBuilder::new()
             .name(Some("GlassWeather"))
             .version(Some(APP_VERSION))
@@ -99,28 +187,74 @@ fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
             .license(Some("MIT"))
             .website(Some(APP_SITE))
             .website_label(Some("GitHub"))
-            .comments(Some(about_comments))
+            .comments(Some(t.about_comments))
             .build()),
     )?;
     let sep = PredefinedMenuItem::separator(app)?;
     #[cfg(windows)]
     let menu = {
+        use tauri::menu::Submenu;
         let bar = CheckMenuItem::with_id(
             app,
             MENU_BAR,
-            t_bar,
+            t.floating_bar,
             true,
             bar_enabled(),
             None::<&str>,
         )?;
-        Menu::with_items(app, &[&show, &auto, &bar, &about, &sep, &quit])?
+        let deskband = CheckMenuItem::with_id(
+            app,
+            MENU_DESKBAND,
+            t.deskband,
+            true,
+            deskband_running(),
+            None::<&str>,
+        )?;
+        // 位置子菜单：4 个互斥单选位（勾选态 = 持久化值）
+        let current_place = deskband_place();
+        let auto_place = CheckMenuItem::with_id(
+            app, PLACE_AUTO, t.place_auto, true, current_place == PLACE_AUTO, None::<&str>,
+        )?;
+        let left = CheckMenuItem::with_id(
+            app, PLACE_LEFT, t.place_left, true, current_place == PLACE_LEFT, None::<&str>,
+        )?;
+        let before_notif = CheckMenuItem::with_id(
+            app,
+            PLACE_BEFORE_NOTIF,
+            t.place_before_notif,
+            true,
+            current_place == PLACE_BEFORE_NOTIF,
+            None::<&str>,
+        )?;
+        let before_start = CheckMenuItem::with_id(
+            app,
+            PLACE_BEFORE_START,
+            t.place_before_start,
+            true,
+            current_place == PLACE_BEFORE_START,
+            None::<&str>,
+        )?;
+        let place_menu = Submenu::with_id(
+            app,
+            MENU_PLACE,
+            t.deskband_place,
+            true,
+        )?;
+        place_menu.append(&auto_place)?;
+        place_menu.append(&left)?;
+        place_menu.append(&before_notif)?;
+        place_menu.append(&before_start)?;
+        Menu::with_items(
+            app,
+            &[&show, &auto, &bar, &deskband, &place_menu, &about, &sep, &quit],
+        )?
     };
     #[cfg(not(windows))]
     let menu = Menu::with_items(app, &[&show, &auto, &about, &sep, &quit])?;
 
     // 窗口标题同样跟随语言（配置里的初始标题是英文兜底，前端启动后即被覆盖）
     if let Some(win) = app.get_webview_window("main") {
-        win.set_title(&title)?;
+        win.set_title(&t.title)?;
     }
     let tray = app.tray_by_id("main").expect("tray must be built in setup");
     tray.set_menu(Some(menu))?;
@@ -129,7 +263,7 @@ fn rebuild_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
         .unwrap()
         .as_ref()
         .map(|s| s.tooltip.clone())
-        .unwrap_or(default_tip);
+        .unwrap_or(t.default_tooltip);
     tray.set_tooltip(Some(tip))?;
     Ok(())
 }
@@ -289,13 +423,15 @@ fn popup_gen() -> &'static Mutex<u64> {
     POPUP_GEN.get_or_init(|| Mutex::new(0))
 }
 
-/* ============================ Windows 任务栏天气条 ============================ */
+/* ============================ Windows 悬浮天气条 / 任务栏天气 ============================ */
 
-/* Windows 没有第三方任务栏嵌入接口（Win11 已移除 desk band）。等价实现：在
-   任务栏正上方的屏幕角落常驻一个迷你天气条（无边框/置顶/不进任务栏的透明
-   webview 小窗，显示图标 + 温度）。悬停它弹出完整详情卡片（光标轮询驱动，
-   150ms），点击打开主窗口；托盘图标则只保留系统原生 tooltip（一句话天气），
-   避免卡片与 tooltip 双重提示。
+/* 悬浮天气条：任务栏正上方的屏幕角落常驻一个迷你天气条（无边框/置顶/不进
+   任务栏的透明 webview 小窗，显示图标 + 温度）。悬停它弹出完整详情卡片
+   （光标轮询驱动，150ms），点击打开主窗口；托盘图标则只保留系统原生
+   tooltip（一句话天气），避免卡片与 tooltip 双重提示。
+   任务栏天气（deskband）：tauri-plugin-deskband11lib 把 webview 小窗真正挂进
+   Win11 任务栏内部空余区（任务栏按钮与通知区之间），跟随任务栏移动/换边，
+   Explorer 重启自动重建；仅 Win11 可用，Win10 上启动失败只打日志。
    tray-icon 0.25 的 Leave 检测有缺陷：15ms 定时器用 last_position.take() 一次
    性取值，鼠标在图标上静止超一个周期后移出时 Leave 永不触发。因此 Windows
    上弹窗的显示与隐藏完全改用光标轮询判定，不再依赖托盘 Enter/Leave 事件。 */
@@ -304,7 +440,7 @@ const BAR_W: f64 = 148.0;
 #[cfg(windows)]
 const BAR_H: f64 = 44.0;
 
-/// 任务栏天气条开关（托盘菜单「任务栏天气条」勾选项），持久化于应用配置目录
+/// 悬浮天气条开关（托盘菜单「悬浮天气条」勾选项），持久化于应用配置目录
 #[cfg(windows)]
 static BAR_ENABLED: OnceLock<Mutex<bool>> = OnceLock::new();
 #[cfg(windows)]
@@ -317,17 +453,17 @@ fn bar_enabled() -> bool {
 }
 
 #[cfg(windows)]
-fn settings_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+fn cfg_path(app: &AppHandle, name: &str) -> Option<std::path::PathBuf> {
     app.path()
         .app_config_dir()
         .ok()
-        .map(|d| d.join("bar.cfg"))
+        .map(|d| d.join(name))
 }
 
 /// 启动时读入持久化开关（无配置文件时默认开启）
 #[cfg(windows)]
 fn load_bar_setting(app: &AppHandle) -> bool {
-    let on = settings_path(app)
+    let on = cfg_path(app, "bar.cfg")
         .and_then(|p| std::fs::read_to_string(p).ok())
         .map(|s| s.trim() == "on")
         .unwrap_or(true);
@@ -337,7 +473,7 @@ fn load_bar_setting(app: &AppHandle) -> bool {
 
 #[cfg(windows)]
 fn save_bar_setting(app: &AppHandle, on: bool) {
-    if let Some(p) = settings_path(app) {
+    if let Some(p) = cfg_path(app, "bar.cfg") {
         if let Some(dir) = p.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -416,47 +552,65 @@ fn show_popup_above_bar(app: &AppHandle, bar_rect: &windows::Win32::Foundation::
     popup_show_raw(&win);
 }
 
-/// 光标轮询状态机（每 150ms）：
-/// 悬停天气条（外扩 6px）→ 弹窗显示在其正上方（已显示则不重复操作）；
-/// 离开条且弹窗可见时，光标也不在弹窗上（外扩 10px 盖缝隙）→ 隐藏弹窗；
+/// 光标轮询状态机（每 150ms），覆盖两个天气入口：
+/// 悬停悬浮天气条（外扩 6px）→ 弹窗显示在其正上方；
+/// 悬停任务栏天气 deskband（外扩 2px，容差小以免波及任务栏邻居）→ 弹窗显示在
+/// 其贴边一侧（任务栏在底部→上方，顶部→下方，左侧→右侧，右侧→左侧）；
+/// 离开两者且弹窗可见时，光标也不在弹窗上（外扩 10px 盖缝隙）→ 隐藏弹窗；
 /// 光标停在弹窗上 → 保持显示（用户在读卡片）。
 #[cfg(windows)]
-fn poll_bar_hover(app: &AppHandle) {
+fn poll_hover(app: &AppHandle) {
     use windows::Win32::Foundation::{POINT, RECT};
     use windows::Win32::UI::WindowsAndMessaging::{
         GetCursorPos, GetWindowRect, IsWindowVisible,
     };
 
-    let Some(bar) = app.get_webview_window("bar") else { return };
-    let Ok(bar_hwnd) = bar.hwnd() else { return };
     let Some(popup) = app.get_webview_window("popup") else { return };
     let Ok(popup_hwnd) = popup.hwnd() else { return };
 
     unsafe {
-        // 天气条被托盘菜单关闭（隐藏）时，悬停判定整体跳过
-        if !IsWindowVisible(bar_hwnd).as_bool() {
-            return;
-        }
         let mut cursor = POINT { x: 0, y: 0 };
         if GetCursorPos(&mut cursor).is_err() {
             return;
         }
-        let mut br = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-        if GetWindowRect(bar_hwnd, &mut br).is_err() {
-            return;
-        }
 
-        // 悬停天气条 → 显示（或保持）弹窗
-        if cursor.x >= br.left - 6 && cursor.x <= br.right + 6
-            && cursor.y >= br.top - 6 && cursor.y <= br.bottom + 6
-        {
-            if !IsWindowVisible(popup_hwnd).as_bool() {
-                show_popup_above_bar(app, &br);
+        // 入口一：悬浮天气条（可见时才参与判定）
+        if let Some(bar) = app.get_webview_window("bar") {
+            if let Ok(bar_hwnd) = bar.hwnd() {
+                if IsWindowVisible(bar_hwnd).as_bool() {
+                    let mut br = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    if GetWindowRect(bar_hwnd, &mut br).is_ok()
+                        && cursor.x >= br.left - 6 && cursor.x <= br.right + 6
+                        && cursor.y >= br.top - 6 && cursor.y <= br.bottom + 6
+                    {
+                        if !IsWindowVisible(popup_hwnd).as_bool() {
+                            show_popup_above_bar(app, &br);
+                        }
+                        return;
+                    }
+                }
             }
-            return;
         }
 
-        // 不在条上：弹窗不可见就无事可做
+        // 入口二：任务栏天气（deskband）
+        if let Some(db) = app.get_webview_window(DESKBAND_LABEL) {
+            if let Ok(db_hwnd) = db.hwnd() {
+                if IsWindowVisible(db_hwnd).as_bool() {
+                    let mut dr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    if GetWindowRect(db_hwnd, &mut dr).is_ok()
+                        && cursor.x >= dr.left - 2 && cursor.x <= dr.right + 2
+                        && cursor.y >= dr.top - 2 && cursor.y <= dr.bottom + 2
+                    {
+                        if !IsWindowVisible(popup_hwnd).as_bool() {
+                            show_popup_beside_deskband(app, &dr);
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 两个入口都不在：弹窗不可见就无事可做
         if !IsWindowVisible(popup_hwnd).as_bool() {
             return;
         }
@@ -470,6 +624,163 @@ fn poll_bar_hover(app: &AppHandle) {
         }
     }
     hide_popup(app);
+}
+
+/// 弹窗显示在任务栏天气（deskband）旁边：按任务栏所在屏幕边缘选择方向，
+/// 底部 → 上方，顶部 → 下方，左侧 → 右侧，右侧 → 左侧，并对屏幕内收 6px。
+#[cfg(windows)]
+fn show_popup_beside_deskband(app: &AppHandle, db_rect: &windows::Win32::Foundation::RECT) {
+    let Some(win) = app.get_webview_window("popup") else { return };
+    let sf = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let (pw, ph) = ((POPUP_W * sf) as i32, (POPUP_H * sf) as i32);
+
+    let cx = (db_rect.left + db_rect.right) as f64 / 2.0;
+    let cy = (db_rect.top + db_rect.bottom) as f64 / 2.0;
+    let mon = app
+        .monitor_from_point(cx, cy)
+        .ok()
+        .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+
+    let (x, y) = if let Some(m) = mon {
+        let mp = m.position();
+        let ms = m.size();
+        let (mx, my, mw, mh) = (mp.x, mp.y, ms.width as i32, ms.height as i32);
+        // deskband 在任务栏里，距离哪条屏幕边最近即任务栏所在边
+        let d_bottom = my + mh - db_rect.bottom;
+        let d_top = db_rect.top - my;
+        let d_left = db_rect.left - mx;
+        let d_right = mx + mw - db_rect.right;
+        let (x, y) = if d_bottom <= d_top && d_bottom <= d_left && d_bottom <= d_right {
+            // 底部任务栏：弹窗在 deskband 上方
+            let x = (db_rect.left + db_rect.right) / 2 - pw / 2;
+            (x, db_rect.top - ph - 6)
+        } else if d_top <= d_left && d_top <= d_right {
+            // 顶部任务栏：弹窗在 deskband 下方
+            let x = (db_rect.left + db_rect.right) / 2 - pw / 2;
+            (x, db_rect.bottom + 6)
+        } else if d_left <= d_right {
+            // 左侧任务栏：弹窗在 deskband 右侧
+            let y = (db_rect.top + db_rect.bottom) / 2 - ph / 2;
+            (db_rect.right + 6, y)
+        } else {
+            // 右侧任务栏：弹窗在 deskband 左侧
+            let y = (db_rect.top + db_rect.bottom) / 2 - ph / 2;
+            (db_rect.left - pw - 6, y)
+        };
+        // 屏幕内收 6px 收边
+        (
+            x.clamp(mx + 6, mx + mw - pw - 6),
+            y.clamp(my + 6, my + mh - ph - 6),
+        )
+    } else {
+        // 无显示器信息时兜底：deskband 上方
+        (
+            (db_rect.left + db_rect.right) / 2 - pw / 2,
+            db_rect.top - ph - 6,
+        )
+    };
+
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+    popup_show_raw(&win);
+}
+
+/* ============================ Windows 11 任务栏天气（deskband） ============================ */
+
+/* tauri-plugin-deskband11lib：把 webview 小窗挂进 Win11 任务栏空余区。
+   控制器持有"窗口工厂"闭包，任务栏布局变化 / Explorer 重启 / DPI 变更时按需
+   重建窗口；因此窗口内不放状态（页面自身从 localStorage 读快照渲染）。
+   开关持久化于 deskband.cfg（与悬浮条的 bar.cfg 同一目录、同 on/off 格式）。 */
+
+#[cfg(windows)]
+type DeskbandHandle = tauri_plugin_deskband11lib::TaskbarWindowHandle<tauri::Wry>;
+
+// TaskbarWindowHandle 非 Send（内含 event loop 弱引用），不能进全局 static。
+// 所有启停调用点（setup、托盘菜单事件）都在 Tauri 主线程，用 thread_local 即可。
+#[cfg(windows)]
+thread_local! {
+    static DESKBAND_HANDLE: std::cell::RefCell<Option<DeskbandHandle>> =
+        const { std::cell::RefCell::new(None) };
+}
+#[cfg(windows)]
+fn deskband_running() -> bool {
+    DESKBAND_HANDLE.with(|h| h.borrow().is_some())
+}
+
+/// 任务栏天气窗口工厂：紧凑单行（图标 + 温度 + 今日范围），页面 tray-deskband.html
+#[cfg(windows)]
+fn create_deskband_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    tauri_plugin_deskband11lib::taskbar_window_builder(
+        app,
+        DESKBAND_LABEL,
+        WebviewUrl::App("tray-deskband.html".into()),
+    )
+    .inner_size(150.0, 48.0)
+    .transparent(true)
+    .build()
+}
+
+/// 启动任务栏天气（placement 取用户持久化的选择；Win10 上启动失败仅打日志）
+#[cfg(windows)]
+fn start_deskband(app: &AppHandle) -> bool {
+    if deskband_running() {
+        return true;
+    }
+    let placement = placement_from_id(&deskband_place())
+        .unwrap_or(tauri_plugin_deskband11lib::TaskbarContentPlacement::Auto);
+    match tauri_plugin_deskband11lib::TaskbarWindowController::new(
+        app,
+        create_deskband_window,
+    )
+    .options(tauri_plugin_deskband11lib::TaskbarContentHostOptions {
+        preferred_width: Some(150.0),
+        placement: Some(placement),
+        ..Default::default()
+    })
+    .start()
+    {
+        Ok(handle) => {
+            DESKBAND_HANDLE.with(|h| *h.borrow_mut() = Some(handle));
+            true
+        }
+        Err(e) => {
+            eprintln!("任务栏天气启动失败（需 Windows 11）: {e}");
+            false
+        }
+    }
+}
+
+#[cfg(windows)]
+fn stop_deskband() {
+    DESKBAND_HANDLE.with(|h| {
+        if let Some(handle) = h.borrow_mut().take() {
+            handle.stop();
+        }
+    });
+}
+
+/// 启动时读入任务栏天气开关（无配置文件时默认开启——Win11 新旗舰位）
+#[cfg(windows)]
+fn load_deskband_setting(app: &AppHandle) -> bool {
+    cfg_path(app, "deskband.cfg")
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim() == "on")
+        .unwrap_or(true)
+}
+
+#[cfg(windows)]
+fn save_deskband_setting(app: &AppHandle, on: bool) {
+    if let Some(p) = cfg_path(app, "deskband.cfg") {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&p, if on { "on" } else { "off" });
+    }
 }
 
 /// 不抢前台焦点地显示窗口（Windows：SW_SHOWNOACTIVATE；其他平台直接 show，
@@ -656,15 +967,66 @@ fn main() {
             let sep = PredefinedMenuItem::separator(app)?;
             #[cfg(windows)]
             let menu = {
+                use tauri::menu::Submenu;
                 let bar = CheckMenuItem::with_id(
                     app,
                     MENU_BAR,
-                    "Taskbar weather strip",
+                    "Floating weather strip",
                     true,
                     bar_on,
                     None::<&str>,
                 )?;
-                Menu::with_items(app, &[&show, &auto, &bar, &about, &sep, &quit])?
+                let deskband = CheckMenuItem::with_id(
+                    app,
+                    MENU_DESKBAND,
+                    "Taskbar weather",
+                    true,
+                    false, // 初始未启动；start_deskband 后由 set_tray_lang 重建为实态
+                    None::<&str>,
+                )?;
+                // 位置子菜单（英文兜底；set_tray_lang 会带持久化值重建勾选态）
+                let current_place = load_place_setting(&app.handle().clone());
+                let p_auto = CheckMenuItem::with_id(
+                    app, PLACE_AUTO, "Auto", true, current_place == PLACE_AUTO, None::<&str>,
+                )?;
+                let p_left = CheckMenuItem::with_id(
+                    app,
+                    PLACE_LEFT,
+                    "Far end (after Widgets)",
+                    true,
+                    current_place == PLACE_LEFT,
+                    None::<&str>,
+                )?;
+                let p_notif = CheckMenuItem::with_id(
+                    app,
+                    PLACE_BEFORE_NOTIF,
+                    "Before notification area",
+                    true,
+                    current_place == PLACE_BEFORE_NOTIF,
+                    None::<&str>,
+                )?;
+                let p_start = CheckMenuItem::with_id(
+                    app,
+                    PLACE_BEFORE_START,
+                    "Next to Start button",
+                    true,
+                    current_place == PLACE_BEFORE_START,
+                    None::<&str>,
+                )?;
+                let place_menu = Submenu::with_id(
+                    app,
+                    MENU_PLACE,
+                    "Taskbar weather position",
+                    true,
+                )?;
+                place_menu.append(&p_auto)?;
+                place_menu.append(&p_left)?;
+                place_menu.append(&p_notif)?;
+                place_menu.append(&p_start)?;
+                Menu::with_items(
+                    app,
+                    &[&show, &auto, &bar, &deskband, &place_menu, &about, &sep, &quit],
+                )?
             };
             #[cfg(not(windows))]
             let menu = Menu::with_items(app, &[&show, &auto, &about, &sep, &quit])?;
@@ -695,11 +1057,59 @@ fn main() {
                     }
                     #[cfg(windows)]
                     MENU_BAR => {
-                        // 任务栏天气条开关：翻转 + 持久化 + 立即生效（关则连带收起弹窗）
+                        // 悬浮天气条开关：翻转 + 持久化 + 立即生效（关则连带收起弹窗）
                         let on = !bar_enabled();
                         *bar_enabled_store().lock().unwrap() = on;
                         save_bar_setting(app, on);
                         set_bar_visible(app, on);
+                        let _ = rebuild_tray(app, &current_lang(app));
+                    }
+                    #[cfg(windows)]
+                    MENU_DESKBAND => {
+                        // 任务栏天气开关：翻转 + 持久化 + 立即启停（Win11 deskband）
+                        let on = !deskband_running();
+                        if on {
+                            if !start_deskband(app) {
+                                // 启动失败（如 Win10）保持关态
+                                save_deskband_setting(app, false);
+                            } else {
+                                save_deskband_setting(app, true);
+                            }
+                        } else {
+                            stop_deskband();
+                            hide_popup(app);
+                            save_deskband_setting(app, false);
+                        }
+                        let _ = rebuild_tray(app, &current_lang(app));
+                    }
+                    // 任务栏天气位置：切换持久化值；正在运行则停后按新位置重启。
+                    // 注意：handle.stop() 里窗口销毁（window.destroy）是经 Tauri
+                    // 主线程异步执行的，同一 label "deskband" 的窗口尚未销毁完就
+                    // 同步重建会撞 label 冲突使 start 失败（天气消失、勾选丢失）。
+                    // 因此重启延后约 600ms，并切回主线程执行（controller 与窗口
+                    // 创建都要求在主线程）。
+                    #[cfg(windows)]
+                    id if id == PLACE_AUTO
+                        || id == PLACE_LEFT
+                        || id == PLACE_BEFORE_NOTIF
+                        || id == PLACE_BEFORE_START =>
+                    {
+                        if deskband_place() != *id {
+                            let restarting = deskband_running();
+                            *deskband_place_store().lock().unwrap() = id.to_string();
+                            save_place_setting(app, id);
+                            if restarting {
+                                stop_deskband();
+                                let app = app.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(Duration::from_millis(600));
+                                    let app2 = app.clone();
+                                    let _ = app.run_on_main_thread(move || {
+                                        start_deskband(&app2);
+                                    });
+                                });
+                            }
+                        }
                         let _ = rebuild_tray(app, &current_lang(app));
                     }
                     MENU_QUIT => app.exit(0),
@@ -717,7 +1127,7 @@ fn main() {
                     }
                     // 悬停托盘图标 → 图标旁弹详情卡片；离开 → 延迟收起
                     // （仅非 Windows；Windows 上托盘图标只出原生 tooltip，
-                    //  详情卡片由任务栏天气条悬停触发，见下方 poll_bar_hover）
+                    //  详情卡片由悬浮天气条 / 任务栏天气悬停触发，见 poll_hover）
                     #[cfg(not(windows))]
                     TrayIconEvent::Enter { rect, .. } => {
                         show_popup(tray.app_handle(), rect.position, rect.size)
@@ -750,9 +1160,8 @@ fn main() {
                 apply_rounded_corners(&popup_win);
             }
 
-            // Windows 任务栏天气条：常驻迷你小窗（图标+温度），悬停弹详情卡片，
+            // Windows 悬浮天气条：常驻迷你小窗（图标+温度），悬停弹详情卡片，
             // 点击打开主窗口（页面 tray-bar.html，读同一份 localStorage 快照）。
-            // 透明窗口 + 页面自身圆角/边框，视觉上就是任务栏上的一块小区域。
             #[cfg(windows)]
             {
                 let bar = WebviewWindowBuilder::new(
@@ -777,11 +1186,17 @@ fn main() {
                     popup_show_raw(&bar);
                 }
 
+                // Windows 11 任务栏天气（deskband）：webview 小窗挂进任务栏内部
+                // 空余区，跟随任务栏布局；悬停弹详情卡片（同下方轮询）。
+                if load_deskband_setting(&app_handle) {
+                    start_deskband(&app_handle);
+                }
+
                 // 悬停判定 + 弹窗显示/隐藏：光标轮询驱动（150ms，纯 Win32 调用，
-                // 不碰 Tauri 异步 API，规避后台线程限制）。
+                // 不碰 Tauri 异步 API，规避后台线程限制），覆盖悬浮条与 deskband。
                 std::thread::spawn(move || loop {
                     std::thread::sleep(Duration::from_millis(150));
-                    poll_bar_hover(&app_handle);
+                    poll_hover(&app_handle);
                 });
             }
 
@@ -825,11 +1240,15 @@ fn main() {
             }
             Ok(())
         })
-        // 关闭窗口 = 隐藏到托盘（桌面常驻型天气应用的标准行为，退出走托盘菜单）
+        // 关闭主窗口 = 隐藏到托盘（桌面常驻型天气应用的标准行为，退出走托盘菜单）。
+        // 仅作用于主窗口：任务栏 deskband 窗口会被任务栏按需销毁/重建（Explorer
+        // 重启、DPI 变更），prevent_close 会卡住该生命周期。
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
             }
         })
         .run(tauri::generate_context!())

@@ -1,5 +1,5 @@
 [package]
-name = "weather"
+name = "glassweather"
 version = "0.1.0"
 description = "天气查询桌面应用：实时天气 · 7 天预报 · 30 年今日历史"
 edition = "2021"
@@ -15,6 +15,8 @@ tauri-plugin-autostart = "2"
 # 悬停弹窗在 Windows 上用 SW_SHOWNOACTIVATE 显示，避免抢前台焦点
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm"] }
+# Win11 任务栏嵌入（deskband）：把 webview 小窗挂进任务栏空余区
+tauri-plugin-deskband11lib = "1.5"
 
 [profile.release]
 strip = true

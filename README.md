@@ -50,6 +50,13 @@ You can also double-click `index.html` to open it via `file://` (the APIs allow 
 
 ## Desktop App
 
+The desktop app shares the same frontend as the website and adds: a system tray (icon follows the weather, native one-line tooltip) plus two always-on weather surfaces with hover detail cards —
+
+- **Floating weather strip** (Windows): a mini strip docked just above the taskbar in the bottom-right screen corner (icon + temperature + today's range); hovering it shows the full detail card, clicking it opens the main window; toggle in the tray menu
+- **Taskbar weather** (Windows 11 only): a webview mini window embedded inside the actual taskbar, in the free space between the taskbar buttons and the notification area (icon + temperature + today's range); hovering it shows the detail card (direction adapts to the taskbar edge), clicking it opens the main window; follows the taskbar when it moves or switches edges and rebuilds when Explorer restarts; toggle in the tray menu — requires Windows 11 (on Windows 10 use the floating strip); position adjustable via the "Taskbar weather position" submenu (auto / next to Start / far end after Widgets / before notification area) — switch it to dodge overlaps with third-party taskbar widgets like TrafficMonitor
+
+Both toggles live in the tray right-click menu and are remembered across restarts.
+
 ### Linux (Debian / Ubuntu / Kali):
 
 ```bash
@@ -103,7 +110,7 @@ Notes:
 - GNOME hides tray icons by default; install the AppIndicator/KStatusNotifier extension. KDE / XFCE support it natively
 - The tray hover card works on all three platforms (Linux detects hover via cursor polling, so a slight delay is normal)
 - Windows 11 tucks new apps into the hidden tray overflow by default; enable them under Taskbar settings → Other system tray icons, or drag the icon onto the taskbar
-- The Windows taskbar weather strip is an always-on-top mini window and stays visible over fullscreen apps (videos, games); mention it if you'd rather have it removed
+- The floating weather strip is an always-on-top mini window and stays visible over fullscreen apps (videos, games) — turn it off in the tray menu if you don't need it; the taskbar weather sits inside the taskbar and is unaffected by fullscreen apps
 - Weather icons are emoji; install `fonts-noto-color-emoji` on Linux
 
 ## Data Sources
