@@ -31,7 +31,7 @@
   .range { margin-left: auto; font-size: 12px; color: rgba(245,247,250,0.85); text-align: right; }
   .range .pop { color: #38bdf8; display: block; margin-top: 2px; }
   hr { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 9px 0; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12px; }
   .grid .cell { display: flex; justify-content: space-between; gap: 8px; }
   .grid .k { color: rgba(245,247,250,0.60); white-space: nowrap; }
   .grid .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -137,7 +137,7 @@ setInterval(readOnce, 1500);
 readOnce();
 
 /* 点击卡片 → 打开主窗口（全局 API 未就绪时短暂重试） */
-document.body.addEventListener('click', function () {
+document.addEventListener("click", function () {
   var n = 0;
   (function ping() {
     var g = window.__TAURI__;

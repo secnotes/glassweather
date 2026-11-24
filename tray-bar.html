@@ -13,6 +13,7 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body { height: 100vh; }
   body {
     font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", system-ui, sans-serif;
     color: #f5f7fa;
@@ -64,7 +65,7 @@ setInterval(readOnce, 1500);
 readOnce();
 
 /* 点击天气条 → 打开主窗口（全局 API 未就绪时短暂重试） */
-document.body.addEventListener('click', function () {
+document.addEventListener("click", function () {
   var n = 0;
   (function ping() {
     var g = window.__TAURI__;
