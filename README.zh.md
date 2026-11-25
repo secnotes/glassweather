@@ -1,62 +1,22 @@
-# 天气查询 GlassWeather · 含过去 30 年今日天气
+<div align="center">
 
-**中文 | [English](README.md)**
+# GlassWeather
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/secnotes/glassweather?label=Release)](https://github.com/secnotes/glassweather/releases)
+[![Platform: Windows / Linux](https://img.shields.io/badge/Platform-Windows%20%2F%20Linux-lightgrey)](https://github.com/secnotes/glassweather/releases)
+[![Tauri 2](https://img.shields.io/badge/Tauri-2-orange)](https://v2.tauri.app/)
+[![Data: Open-Meteo](https://img.shields.io/badge/Data-Open--Meteo-brightgreen)](https://open-meteo.com/)
+
+**[English](README.md) | [中文](README.zh.md)**
 
 一个纯前端静态天气网站（中英双语），可以开发成桌面应用，也可以开发成 App 或者微信小程序。查询任意城市的实时天气与未来 7 天预报，并展示**所选城市今天这个日期在过去 30 年的历史数据**。
 
 曾经微软的 MSN 天气，没有烦人的新闻，糟糕的广告，而是有一个简洁、实用的天气软件。并且拥有一些独特的功能，例如可以查看过去三十年，这一天的降水天数、最高或最低温度。可惜后来，有用的功能下线了，没用的广告霸屏了。因此，我想拥有一个属于自己的天气助手，弥补常见的“中国天气网”、“墨迹天气”等 App 的不足，添加自己喜欢的卡片。
 
-## 功能
+</div>
 
-- **中英文切换**：顶栏一键切换，选择本地记忆；城市名、天气描述、等级文案、空气质量口径均随语言联动。
-- **自动定位**：打开网页自动获取用户位置并加载当地天气（需浏览器授权）；拒绝或不可用时回退北京并提示。顶栏 📍 按钮可随时重新定位。上次查看的位置会被记住，下次打开直接加载。城市名由 BigDataCloud 免费客户端接口反查。
-- **城市搜索**：中英双语自动补全（Open-Meteo Geocoding），默认加载北京。
-- **常见天气卡片**：
-  - 当前天气主卡（温度、天气图标、体感温度、天气描述）
-  - 湿度：270° 仪表弧（指针 + 分段着色）
-  - 风力：风速等级 + MSN 风格刻度罗盘（风速、风向合并卡）
-  - 气压 / 紫外线 / 空气质量：分段指示条
-  - 空气质量：中文按中国国标（HJ 633-2012，含首要污染物），英文按 US AQI
-  - 月相：八相 + 照亮比例 + SVG 月相图（本地推算）
-  - 日出 / 日落：合并跨双列卡，底部太阳轨迹弧显示当日太阳位置
-  - 未来 7 天预报（图标、最高/最低温、降水概率；卡片 / 列表双模式）
-- **过去 30 年今日天气卡片**（取所选城市当地日期，统计该日期在过去 30 年的历史数据）：
-  - 🌧️ 降水天数：今天这个日期在过去 30 年里有几天降水；冬季自动转为"降雪天数"，改按降雪统计
-  - 🌧️ 最大降水：今天这个日期在过去 30 年的最大降水量 + 年份 + 日期
-  - 🔥 最高温度：今天这个日期在过去 30 年的最高温度 + 年份 + 日期
-  - ❄️ 最低温度：今天这个日期在过去 30 年的最低温度 + 年份 + 日期
-
-
-## 性能与缓存
-
-- 30 年历史数据约 1 万条逐日记录，单次全量拉取约需 35 秒。本站将窗口拆成 **6 个 5 年分块并发拉取**，首载降至约 6 秒；之后原始数据写入 `localStorage` 并缓存 **30 天**，再次打开即时返回。
-- 实时天气缓存 **10 分钟**、空气质量缓存 **30 分钟**，避免频繁请求。
-- 天气与历史数据**并行拉取**，总耗时取两者较慢者（约 6 秒）。
-- "今天"每换一天，前端从缓存数据重新过滤计算，无需重新拉取。
-
-## 本地运行
-
-无需构建步骤，任选其一：
-
-```bash
-# 方式一：Python 内置静态服务器
-python3 -m http.server 8123
-# 浏览器打开 http://localhost:8123
-
-# 方式二：Node
-npx serve .
-```
-
-也可以直接双击 `index.html` 用 `file://` 打开（API 允许跨域，可正常工作）。注意：浏览器定位（Geolocation）需要安全环境（HTTPS 或 localhost），`file://` 下多数浏览器会禁用定位，此时回退北京。
-
-## 桌面应用
-
-桌面版与网页版共用同一份前端，额外提供：系统托盘（图标随天气变化、原生一句话 tooltip）、两种常驻天气与悬停详情卡片——
-
-- **悬浮天气条**（Windows）：任务栏上方屏幕右下角的迷你条（图标 + 温度 + 今日范围），悬停弹出完整详情卡片，点击打开主窗口；托盘菜单可开关
-- **任务栏天气**（Windows 11 专属）：webview 小窗真正嵌进任务栏内部空余区（任务栏按钮与通知区之间），显示图标 + 温度 + 今日范围；悬停弹出详情卡片（弹窗方向自动适配任务栏边缘），点击打开主窗口；跟随任务栏移动/换边，Explorer 重启自动重建；托盘菜单可开关，需 Win11（Win10 请用悬浮天气条）；位置可在托盘菜单「任务栏天气位置」中调整（自动 / 开始按钮旁 / 远端 Widgets 后 / 通知区左侧）——与 TrafficMonitor 等第三方任务栏控件重叠时，换个位置即可错开
-
-两项开关均在托盘右键菜单，重启后记忆。
+## 构建
 
 ### Linux（Debian / Ubuntu / Kali）：
 
@@ -68,6 +28,8 @@ sudo apt install rustc cargo libwebkit2gtk-4.1-dev build-essential libssl-dev \
 npm install
 npx tauri dev      # 开发运行
 npx tauri build    # 产出 .deb / AppImage 于 src-tauri/target/release/bundle/
+
+# 天气图标使用 emoji，Linux 需安装 `fonts-noto-color-emoji`
 ```
 
 
@@ -104,30 +66,3 @@ setx RUSTUP_UPDATE_ROOT https://mirrors.ustc.edu.cn/rust-static/rustup
 set HTTPS_PROXY=http://127.0.0.1:10808
 npx tauri build
 ```
-
-注意事项：
-
-- Linux 下 WebKitGTK 定位依赖 geoclue 服务，多数环境会失败——应用会沿用网页逻辑自动回退北京
-- GNOME 默认不显示托盘图标，需安装 AppIndicator/KStatusNotifier 扩展；KDE / XFCE 原生支持
-- 托盘悬停弹窗在三平台均可用（Linux 托盘经光标轮询检测悬停，略有延迟属正常）
-- Windows 11 默认把新应用收进托盘溢出区，可在「任务栏设置 → 其他系统托盘图标」中开启常显，或把图标拖到任务栏
-- 悬浮天气条是置顶小窗，全屏应用（视频、游戏）时仍会显示在角落，不需要可在托盘菜单关闭；任务栏天气内嵌于任务栏内部，不受全屏影响
-- 天气图标使用 emoji，Linux 需安装 `fonts-noto-color-emoji`
-
-
-## 数据源
-
-全部来自 [Open-Meteo](https://open-meteo.com/)（免费、开源、无需 API key、已开放 CORS）：
-
-| 用途 | 接口 |
-| --- | --- |
-| 城市搜索 | `geocoding-api.open-meteo.com` |
-| 实时天气 + 7 天预报 | `api.open-meteo.com/v1/forecast` |
-| 历史 30 年逐日数据 | `archive-api.open-meteo.com/v1/archive` |
-| 空气质量（PM2.5/PM10/O₃/NO₂/SO₂/CO 浓度 + US AQI） | `air-quality-api.open-meteo.com/v1/air-quality` |
-
-## 说明
-
-- Open-Meteo 免费版非商业用途每日 10,000 次调用上限，个人使用绰绰有余。
-- 历史归档数据可能滞后数天，最近几天的数据会随补全而更新。
-- 风速为 10m 高度风速，温度为 2m 气温，降雪量为 cm，符合 WMO 标准。
