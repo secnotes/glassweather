@@ -746,6 +746,10 @@ fn start_deskband(app: &AppHandle) -> bool {
     {
         Ok(handle) => {
             DESKBAND_HANDLE.with(|h| *h.borrow_mut() = Some(handle));
+            // 重建托盘菜单：勾选态从"启动前(false)"同步为实态。首启时初始
+            // 菜单写死 false，启动成功后前端 set_tray_lang 的重建时机不可靠
+            // （可能早于启动完成，或语言未变被短路跳过），这里主动刷新。
+            let _ = rebuild_tray(app, &current_lang(app));
             true
         }
         Err(e) => {
@@ -938,6 +942,10 @@ fn main() {
             // 记忆的语言立即调用 set_tray_lang 覆盖（见 app.js 桥接）。
             #[cfg(windows)]
             let bar_on = load_bar_setting(&app.handle().clone());
+            // 任务栏天气启动意图：首次默认开启，也用于初始菜单勾选态（而非写死
+            // false——首启时 start_deskband 尚未执行，勾选与实际状态脱节）
+            #[cfg(windows)]
+            let deskband_on = load_deskband_setting(&app.handle().clone());
             let show = MenuItem::with_id(app, MENU_SHOW, "Show", true, None::<&str>)?;
             let auto = CheckMenuItem::with_id(
                 app,
@@ -981,7 +989,7 @@ fn main() {
                     MENU_DESKBAND,
                     "Taskbar weather",
                     true,
-                    false, // 初始未启动；start_deskband 后由 set_tray_lang 重建为实态
+                    deskband_on, // 启动意图；启动后 start_deskband 会按实态重建菜单
                     None::<&str>,
                 )?;
                 // 位置子菜单（英文兜底；set_tray_lang 会带持久化值重建勾选态）

@@ -2114,6 +2114,43 @@ async function selectCity(lat, lon, zhName, enName) {
   }
 }
 
+/* ---------- 静默刷新：页面隐藏时一直挂着的窗口不再停留在旧快照 ----------
+   只重拉天气 + 空气质量（历史归档本质静态，缓存 30 天，不参与）。
+   两个触发器：
+   1. visibilitychange：切回标签页 / 主窗口重新可见时（网页+桌面通用）；
+   2. 桌面版 10 分钟定时器：常驻托盘应用的主窗口哪怕一直不被打开，
+      托盘/任务栏/弹窗的快照也随周期更新（网页版不启定时器）。
+   并发保护：刷新进行中不叠加触发；loadWeather/loadAQI 内部各有缓存
+   TTL（10/30 分钟），未超龄时直接命中缓存不发请求。 */
+let refreshing = false;
+async function refreshWeatherSilently() {
+  if (refreshing || !lastCtx.weather) return;
+  refreshing = true;
+  const { lat, lon } = lastCtx;
+  try {
+    const w = await loadWeather(lat, lon);
+    if (lastCtx.lat !== lat || lastCtx.lon !== lon) return; // 期间用户换了城市
+    lastCtx.weather = w;
+    renderWeather(w, cityLabel());
+    syncTrayWeather();
+  } catch { /* 静默失败：保留旧数据 */ }
+  try {
+    const a = await loadAQI(lat, lon);
+    if (lastCtx.lat !== lat || lastCtx.lon !== lon) return;
+    lastCtx.aqi = a;
+    renderAQI(a);
+    syncTrayWeather();
+  } catch { setText('d-aqi', '--'); }
+  refreshing = false;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshWeatherSilently();
+});
+if (isTauriShell()) {
+  setInterval(refreshWeatherSilently, 10 * 60 * 1000); // 10 分钟
+}
+
 /* 语言切换：静态文案 + 已缓存数据整体重渲染 */
 function setLang(lang) {
   if (lang === LANG) return;

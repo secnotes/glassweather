@@ -12,9 +12,10 @@
 
 A purely front-end static weather website (bilingual Chinese/English) that can be wrapped into a desktop app, a mobile app, or a WeChat Mini Program. Look up current weather and a 7-day forecast for any city, plus **historical data for today's date over the past 30 years** for the selected city.
 
-Microsoft's MSN Weather used to be free of annoying news feeds and terrible ads — a clean, genuinely useful weather tool. It even had some unique features, like showing the number of precipitation days and the highest or lowest temperatures on this date over the past thirty years. Sadly, the useful features were retired while the useless ads took over the screen. So I wanted a weather assistant of my own — one that makes up for the shortcomings of common apps like weather.com.cn and Moji Weather, with the cards I like.
-
 </div>
+
+> Microsoft's MSN Weather used to be free of annoying news feeds and terrible ads — a clean, genuinely useful weather tool. It even had some unique features, like showing the number of precipitation days and the highest or lowest temperatures on this date over the past thirty years. Sadly, the useful features were retired while the useless ads took over the screen. So I wanted a weather assistant of my own — one that makes up for the shortcomings of common apps like weather.com.cn and Moji Weather, with the cards I like.
+
 
 ## Build
 
