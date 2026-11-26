@@ -429,7 +429,36 @@ function cacheSet(key, v) {
   try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), v })); } catch {}
 }
 
-/* ---------- 城市搜索（双语结果，选中后可跨语言重渲染） ---------- */
+/* ---------- 城市搜索（双语结果，选中后可跨语言重渲染） ----------
+   中文输入：本地 adcode 行政区划库（city-zh.json，含省市县全层级，约 3500 条，
+   弥补 Open-Meteo 对中国县级覆盖的不足）优先，远程结果补后；英文/拼音输入走
+   远程。本地命中给建议列表提供与远程一致的伪 result 结构（id 冠负数避免撞 id）。 */
+let cityZh = null;   // 本地行政区划库（懒加载）
+async function loadCityZh() {
+  if (cityZh !== null) return cityZh;
+  try {
+    const list = await fetch('city-zh.json').then(r => r.json());
+    cityZh = Array.isArray(list) ? list : [];
+  } catch { cityZh = []; }
+  return cityZh;
+}
+function searchCityLocal(q) {
+  const hit = e => e.f.includes(q) || e.c.includes(q) || (e.p || '').includes(q);
+  return cityZh
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => hit(e))
+    .slice(0, 8)
+    .map(({ e, i }) => ({
+      id: -(i + 1),      // 库内索引取负：稳定且唯一（坐标 hash 会碰撞——
+                          // 同市辖条目共享坐标，跨条目反查曾串成「市辖区」）
+      name: e.c,
+      admin1: e.p || '',  // 上级（省/市/州）做后缀；省级行政区/直辖市无后缀
+      country: '',
+      latitude: e.lat,
+      longitude: e.lon,
+      _local: true,   // 标记本地库来源（renderSuggestions 里不需要远程反查）
+    }));
+}
 async function searchCity(q, lang) {
   if (!q.trim()) return [];
   const url = `${GEOCODE_URL}?name=${encodeURIComponent(q)}&count=6&language=${lang || LANG}&format=json`;
@@ -2179,7 +2208,18 @@ searchInput.addEventListener('input', () => {
   if (!q) { suggBox.hidden = true; return; }
   searchTimer = setTimeout(async () => {
     try {
-      // 双语并行搜索：切换语言与跨语言重渲染都需要两份名字
+      // 中文输入：本地行政区划库（省市区县全层级，覆盖 Open-Meteo 缺失的县级）
+      // 独占结果——不再请求远程（其中文覆盖本就稀疏，且无益于补充）
+      const hasZh = /[一-鿿]/.test(q);
+      if (hasZh) {
+        await loadCityZh();
+        const local = searchCityLocal(q);
+        if (local.length) {
+          renderSuggestions({ zh: local, en: [] });
+          return;
+        }
+      }
+      // 英文/拼音输入或本地未命中：双语并行远程搜索
       const [zh, en] = await Promise.all([searchCity(q, 'zh'), searchCity(q, 'en')]);
       renderSuggestions({ zh, en });
     } catch { suggBox.hidden = true; }
@@ -2199,15 +2239,17 @@ function renderSuggestions(results) {
   const list = results[LANG] || [];
   if (!list.length) { suggBox.hidden = true; return; }
   suggBox.innerHTML = list.map(r => {
+    // 本地库结果：name=短名 admin1=省市区全名 country=空（避免多余分隔符）
+    const sub = r._local
+      ? (r.admin1 ? `<span class="country"> ${escapeHtml(r.admin1)}</span>` : '')
+      : (r.admin1 ? `<span class="country"> ${escapeHtml(r.admin1)}${LANG === 'zh' ? '，' : ', '}${escapeHtml(r.country)}</span>` : '');
     // 按地理 id 找另一语言的结果，找不到则退回当前名字
     const zh = (results.zh || []).find(x => x.id === r.id) || (LANG === 'zh' ? r : null);
     const en = (results.en || []).find(x => x.id === r.id) || (LANG === 'en' ? r : null);
     const zhName = zh ? fullName(zh, 'zh') : r.name;
     const enName = en ? fullName(en, 'en') : r.name;
     return `<li data-lat="${r.latitude}" data-lon="${r.longitude}" data-zh="${escapeHtml(zhName)}" data-en="${escapeHtml(enName)}">` +
-      `<span>${escapeHtml(r.name)}` +
-      (r.admin1 ? `<span class="country"> ${escapeHtml(r.admin1)}${LANG === 'zh' ? '，' : ', '}${escapeHtml(r.country)}</span>` : '') +
-      `</span></li>`;
+      `<span>${escapeHtml(r.name)}${sub}</span></li>`;
   }).join('');
   suggBox.hidden = false;
   suggBox.querySelectorAll('li').forEach(li => {

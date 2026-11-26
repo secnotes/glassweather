@@ -7,6 +7,7 @@
 [![Platform: Windows / Linux](https://img.shields.io/badge/Platform-Windows%20%2F%20Linux-lightgrey)](https://github.com/secnotes/glassweather/releases)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-orange)](https://v2.tauri.app/)
 [![Data: Open-Meteo](https://img.shields.io/badge/Data-Open--Meteo-brightgreen)](https://open-meteo.com/)
+[![Cities: DataV Adcode](https://img.shields.io/badge/Cities-DataV%20Adcode-9cf)](https://github.com/DataV)
 
 **[English](README.md) | [中文](README.zh.md)**
 

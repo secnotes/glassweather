@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const FILES = ['index.html', 'app.js', 'style.css', 'tray-popup.html', 'tray-bar.html', 'tray-deskband.html'];
+const FILES = ['index.html', 'app.js', 'style.css', 'tray-popup.html', 'tray-bar.html', 'tray-deskband.html', 'city-zh.json'];
 const root = path.join(__dirname);
 const dest = path.join(root, 'dist');
 
