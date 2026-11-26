@@ -552,12 +552,70 @@ fn show_popup_above_bar(app: &AppHandle, bar_rect: &windows::Win32::Foundation::
     popup_show_raw(&win);
 }
 
-/// 光标轮询状态机（每 150ms），覆盖两个天气入口：
-/// 悬停悬浮天气条（外扩 6px）→ 弹窗显示在其正上方；
-/// 悬停任务栏天气 deskband（外扩 2px，容差小以免波及任务栏邻居）→ 弹窗显示在
-/// 其贴边一侧（任务栏在底部→上方，顶部→下方，左侧→右侧，右侧→左侧）；
+/// 光标轮询状态机（每 150ms），覆盖两个天气入口，含悬停延迟：
+/// 光标进入任一入口区域即开始计时，连续停留 ≥450ms 才弹卡片（与 Windows
+/// 托盘 tooltip 的悬停延迟一致：扫过、误碰不弹）；从悬浮条滑向 deskband
+/// 属同一入口连续，计时不重置；离开入口即清零。
+/// 弹出后：悬浮天气条（外扩 6px）上方 / 任务栏天气（外扩 2px，容差小以免
+/// 波及任务栏邻居）贴边一侧（任务栏在底部→上方，顶部→下方，左右→对侧）；
 /// 离开两者且弹窗可见时，光标也不在弹窗上（外扩 10px 盖缝隙）→ 隐藏弹窗；
 /// 光标停在弹窗上 → 保持显示（用户在读卡片）。
+#[cfg(windows)]
+static HOVER_SINCE: OnceLock<Mutex<Option<u64>>> = OnceLock::new();
+#[cfg(windows)]
+fn hover_since_store() -> &'static Mutex<Option<u64>> {
+    HOVER_SINCE.get_or_init(|| Mutex::new(None))
+}
+/// 弹卡片的悬停延迟（毫秒），对齐 Windows 托盘 tooltip 手感
+#[cfg(windows)]
+const HOVER_DELAY_MS: u64 = 450;
+
+/// 前台是否为全屏应用（视频/游戏）：前台窗口矩形覆盖其所在显示器整个
+/// 工作区上方的全屏区域即视为全屏。全屏期间不弹卡片——deskband 的窗口
+/// 矩形与全屏内容坐标重叠，光标扫过会被误判为悬停，而弹窗置顶会盖在
+/// 视频上；全屏结束时（前台切换回普通窗口）自动恢复判定。
+#[cfg(windows)]
+fn foreground_is_fullscreen() -> bool {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowRect, IsWindowVisible,
+    };
+
+    unsafe {
+        let fg = GetForegroundWindow();
+        if fg.is_invalid() || !IsWindowVisible(fg).as_bool() {
+            return false;
+        }
+        let mut wr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if GetWindowRect(fg, &mut wr).is_err() {
+            return false;
+        }
+        // 快速排除：窗口明显小于屏幕（未覆盖全屏），不必查显示器信息
+        if wr.right - wr.left < 200 || wr.bottom - wr.top < 200 {
+            return false;
+        }
+        let mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+        if mon.is_invalid() {
+            return false;
+        }
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(mon, &mut mi).as_bool() {
+            // 前台窗口覆盖显示器完整矩形 → 全屏应用
+            return wr.left <= mi.rcMonitor.left
+                && wr.top <= mi.rcMonitor.top
+                && wr.right >= mi.rcMonitor.right
+                && wr.bottom >= mi.rcMonitor.bottom;
+        }
+        false
+    }
+}
+
 #[cfg(windows)]
 fn poll_hover(app: &AppHandle) {
     use windows::Win32::Foundation::{POINT, RECT};
@@ -568,13 +626,38 @@ fn poll_hover(app: &AppHandle) {
     let Some(popup) = app.get_webview_window("popup") else { return };
     let Ok(popup_hwnd) = popup.hwnd() else { return };
 
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
     unsafe {
         let mut cursor = POINT { x: 0, y: 0 };
         if GetCursorPos(&mut cursor).is_err() {
             return;
         }
 
-        // 入口一：悬浮天气条（可见时才参与判定）
+        // 前台是全屏应用（视频/游戏）：视同离开入口——清计时不弹卡片；
+        // 已显示的卡片则走通用收起判定（不在弹窗上即收起），全屏结束恢复。
+        if foreground_is_fullscreen() {
+            *hover_since_store().lock().unwrap() = None;
+            if !IsWindowVisible(popup_hwnd).as_bool() {
+                return;
+            }
+            let mut pr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            if GetWindowRect(popup_hwnd, &mut pr).is_ok()
+                && cursor.x >= pr.left - 10 && cursor.x <= pr.right + 10
+                && cursor.y >= pr.top - 10 && cursor.y <= pr.bottom + 10
+            {
+                return; // 卡片已在屏上且光标在其上：让它自然收起，不强行闪断
+            }
+            hide_popup(app);
+            return;
+        }
+
+        // 当前命中的入口（悬浮条 / deskband），命中区域与矩形一并取出
+        let mut hit: Option<(RECT, bool)> = None; // (矩形, 是否悬浮条)
+
         if let Some(bar) = app.get_webview_window("bar") {
             if let Ok(bar_hwnd) = bar.hwnd() {
                 if IsWindowVisible(bar_hwnd).as_bool() {
@@ -583,34 +666,51 @@ fn poll_hover(app: &AppHandle) {
                         && cursor.x >= br.left - 6 && cursor.x <= br.right + 6
                         && cursor.y >= br.top - 6 && cursor.y <= br.bottom + 6
                     {
-                        if !IsWindowVisible(popup_hwnd).as_bool() {
-                            show_popup_above_bar(app, &br);
-                        }
-                        return;
+                        hit = Some((br, true));
                     }
                 }
             }
         }
 
-        // 入口二：任务栏天气（deskband）
-        if let Some(db) = app.get_webview_window(DESKBAND_LABEL) {
-            if let Ok(db_hwnd) = db.hwnd() {
-                if IsWindowVisible(db_hwnd).as_bool() {
-                    let mut dr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                    if GetWindowRect(db_hwnd, &mut dr).is_ok()
-                        && cursor.x >= dr.left - 2 && cursor.x <= dr.right + 2
-                        && cursor.y >= dr.top - 2 && cursor.y <= dr.bottom + 2
-                    {
-                        if !IsWindowVisible(popup_hwnd).as_bool() {
-                            show_popup_beside_deskband(app, &dr);
+        if hit.is_none() {
+            if let Some(db) = app.get_webview_window(DESKBAND_LABEL) {
+                if let Ok(db_hwnd) = db.hwnd() {
+                    if IsWindowVisible(db_hwnd).as_bool() {
+                        let mut dr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                        if GetWindowRect(db_hwnd, &mut dr).is_ok()
+                            && cursor.x >= dr.left - 2 && cursor.x <= dr.right + 2
+                            && cursor.y >= dr.top - 2 && cursor.y <= dr.bottom + 2
+                        {
+                            hit = Some((dr, false));
                         }
-                        return;
                     }
                 }
             }
         }
 
-        // 两个入口都不在：弹窗不可见就无事可做
+        // 入口区域内：累计停留时长，达标才弹
+        if let Some((rect, is_bar)) = hit {
+            let mut since = hover_since_store().lock().unwrap();
+            let start = *since.get_or_insert(now);
+            *since = Some(start);
+            let stayed = now.saturating_sub(start);
+            let popup_visible = IsWindowVisible(popup_hwnd).as_bool();
+            if popup_visible || stayed >= HOVER_DELAY_MS {
+                if !popup_visible {
+                    if is_bar {
+                        show_popup_above_bar(app, &rect);
+                    } else {
+                        show_popup_beside_deskband(app, &rect);
+                    }
+                }
+            }
+            return;
+        }
+
+        // 离开入口：清零计时
+        *hover_since_store().lock().unwrap() = None;
+
+        // 弹窗不可见就无事可做
         if !IsWindowVisible(popup_hwnd).as_bool() {
             return;
         }
