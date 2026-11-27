@@ -11,6 +11,8 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2"
+# 打开外部链接（页脚 GitHub/Open-Meteo 等系统浏览器打开）
+tauri-plugin-opener = "2"
 
 # 悬停弹窗在 Windows 上用 SW_SHOWNOACTIVATE 显示，避免抢前台焦点
 [target.'cfg(windows)'.dependencies]

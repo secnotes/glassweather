@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/capabilities/2",
+  "identifier": "default",
+  "description": "主窗口基础权限 + 外链打开（页脚 GitHub/Open-Meteo 走系统浏览器）",
+  "windows": ["main", "bar", "popup", "deskband"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "opener:allow-open-url"
+  ]
+}

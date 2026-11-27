@@ -10,6 +10,10 @@
   },
   "app": {
     "withGlobalTauri": true,
+    "security": {
+      "csp": null,
+      "capabilities": ["default"]
+    },
     "windows": [
       {
         "title": "GlassWeather",
@@ -22,10 +26,7 @@
         "resizable": true,
         "theme": "Dark"
       }
-    ],
-    "security": {
-      "csp": null
-    }
+    ]
   },
   "bundle": {
     "active": true,

@@ -20,7 +20,7 @@ A purely front-end static weather website (bilingual Chinese/English) that can b
 
 ## Build
 
-### Linux (Debian / Ubuntu / Kali):
+### Linux (Debian / Ubuntu / Kali)
 
 ```bash
 # System deps + Rust (rustc >= 1.77.5; distro packages or rustup both work)
@@ -36,21 +36,22 @@ npx tauri build    # produces .deb / AppImage under src-tauri/target/release/bun
 
 ### Windows
 
-Install the prerequisites (one-time):
+Install the prerequisites (one-time)
 
 - **Rust**: run the [rustup-init.exe](https://rustup.rs) installer with default options (toolchain `stable-x86_64-pc-windows-msvc`)
 - **Visual Studio 2022 Build Tools**: select the "Desktop development with C++" workload (MSVC v143 + Windows 11 SDK included), ~3-4 GB
 - **Node.js** ≥ 18 (only used for the Tauri CLI)
 - WebView2 ships with Windows 10/11 — nothing extra to install
 
-Build:
+Build
 
 ```bash
 npm install
 npx tauri build
 ```
 
-**Speeding up downloads from mainland China** (when direct access is slow or blocked):
+<details>
+<summary><b>Speeding up downloads from mainland China</b> (when direct access is slow or blocked)</summary>
 
 ```bash
 # rustup components via the USTC mirror (reopen the terminal after setx, then rustup default stable-msvc)
@@ -68,3 +69,6 @@ setx RUSTUP_UPDATE_ROOT https://mirrors.ustc.edu.cn/rust-static/rustup
 set HTTPS_PROXY=http://127.0.0.1:10808
 npx tauri build
 ```
+
+</details>
+

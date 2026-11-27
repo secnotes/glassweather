@@ -19,7 +19,7 @@
 
 ## 构建
 
-### Linux（Debian / Ubuntu / Kali）：
+### Linux（Debian / Ubuntu / Kali）
 
 ```bash
 # 系统依赖 + Rust（rustc ≥ 1.77.5，apt 版或 rustup 均可）
@@ -49,7 +49,8 @@ npx tauri build    # 产出 .deb / AppImage 于 src-tauri/target/release/bundle/
    ```
 
 
-**国内网络提速**（直连慢/被拒时）：
+<details>
+<summary><b>国内网络提速</b>（直连慢/被拒时）</summary>
 
 ```bash
 # rustup 组件下载走中科大镜像（设完重开终端再执行 rustup default stable-msvc）
@@ -67,3 +68,5 @@ setx RUSTUP_UPDATE_ROOT https://mirrors.ustc.edu.cn/rust-static/rustup
 set HTTPS_PROXY=http://127.0.0.1:10808
 npx tauri build
 ```
+
+</details>

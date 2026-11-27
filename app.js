@@ -2155,7 +2155,18 @@ async function selectCity(lat, lon, zhName, enName) {
   }
 }
 
-/* ---------- 静默刷新：页面隐藏时一直挂着的窗口不再停留在旧快照 ----------
+/* ---------- 桌面版：外部链接走系统浏览器（网页版由浏览器原生处理） ----------
+   Tauri 2 的 webview 默认拦截外部导航（点页脚 GitHub/Open-Meteo 无反应），
+   opener 插件的 open_url 放行。全局捕获 http(s) 点击，__TAURI__ 未就绪时重试。 */
+document.addEventListener('click', e => {
+  if (!isTauriShell()) return;
+  const a = e.target.closest && e.target.closest('a[href^="http"]');
+  if (!a || a.dataset.localNav) return;
+  e.preventDefault();
+  const url = a.href;
+  invokeTray('plugin:opener|open_url', { url });
+});
+
    只重拉天气 + 空气质量（历史归档本质静态，缓存 30 天，不参与）。
    两个触发器：
    1. visibilitychange：切回标签页 / 主窗口重新可见时（网页+桌面通用）；

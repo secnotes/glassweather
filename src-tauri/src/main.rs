@@ -1068,6 +1068,8 @@ fn main() {
     tauri::Builder::default()
         // 开机自启插件（Windows: 注册表 / Linux: .desktop / macOS: LaunchAgent）
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        // 外链打开（页脚 GitHub / Open-Meteo）：桌面 webview 默认拦截外部导航
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             set_tray_lang,
             set_tray_weather,
