@@ -812,17 +812,53 @@ fn deskband_running() -> bool {
     DESKBAND_HANDLE.with(|h| h.borrow().is_some())
 }
 
-/// 任务栏天气窗口工厂：紧凑单行（图标 + 温度 + 今日范围），页面 tray-deskband.html
+/// 任务栏天气窗口工厂：紧凑单行（图标 + 温度 + 今日范围），页面 tray-deskband.html。
+/// 字色跟随任务栏主题：WebView2 的 prefers-color-scheme 反映的是「应用模式」
+/// 而非「Windows 模式」（两者在系统设置里是独立开关——Windows 深色 + 应用浅色
+/// 时任务栏是深色但页面被判浅色，深底深字不可读），因此读注册表
+/// SystemUsesLightTheme（任务栏真正跟随的值）注入 data-theme（对齐官方
+/// tauri-clock 示例的做法），并在 ThemeChanged 时重注入。
+#[cfg(windows)]
+const PERSONALIZE_KEY: &str =
+    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+
+#[cfg(windows)]
+fn is_taskbar_light_theme() -> bool {
+    windows_registry::CURRENT_USER
+        .open(PERSONALIZE_KEY)
+        .and_then(|k| k.get_u32("SystemUsesLightTheme"))
+        .map(|v| v != 0)
+        .unwrap_or(true) // 读不到（旧系统/权限）默认按浅色，页面另有 CSS 兜底
+}
+
+#[cfg(windows)]
+fn apply_deskband_theme(win: &WebviewWindow) {
+    let theme = if is_taskbar_light_theme() { "light" } else { "dark" };
+    let _ = win.eval(format!(
+        "document.documentElement.dataset.theme = '{theme}';"
+    ));
+}
+
 #[cfg(windows)]
 fn create_deskband_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    tauri_plugin_deskband11lib::taskbar_window_builder(
+    let window = tauri_plugin_deskband11lib::taskbar_window_builder(
         app,
         DESKBAND_LABEL,
         WebviewUrl::App("tray-deskband.html".into()),
     )
     .inner_size(150.0, 48.0)
     .transparent(true)
-    .build()
+    .on_page_load(|window, _| apply_deskband_theme(&window))
+    .build()?;
+
+    // 系统切换深浅模式（或窗口重建）时重注入任务栏主题
+    let themed = window.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::ThemeChanged(_) = event {
+            apply_deskband_theme(&themed);
+        }
+    });
+    Ok(window)
 }
 
 /// 启动任务栏天气（placement 取用户持久化的选择；Win10 上启动失败仅打日志）

@@ -29,9 +29,12 @@
   .temp { font-size: 14px; font-weight: 600; white-space: nowrap; }
   .range { font-size: 11px; opacity: 0.62; white-space: nowrap; }
   .empty { font-size: 12px; opacity: 0.55; }
-  /* 浅色任务栏（Windows 浅色模式）时换深色字 */
+  /* 浅色任务栏（Windows 系统浅色模式）时换深色字。data-theme 由 Rust 侧读注册表
+     SystemUsesLightTheme 注入（任务栏跟随 Windows 模式，而 WebView2 的
+     prefers-color-scheme 反映应用模式——两者可独立设置）；CSS 媒体查询仅兜底。 */
+  html[data-theme='light'] body { color: #1c2430; }
   @media (prefers-color-scheme: light) {
-    body { color: #1c2430; }
+    html:not([data-theme]) body { color: #1c2430; }
   }
 </style>
 </head>

@@ -1163,6 +1163,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-deskband11lib",
  "windows",
+ "windows-registry",
 ]
 
 [[package]]
