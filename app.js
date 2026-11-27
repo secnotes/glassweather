@@ -1773,7 +1773,8 @@ function openMoonModal(nowMs) {
     `<button class="modal-close" aria-label="${t('moon-modal-close')}">✕</button>` +
     `<h3 class="modal-title">${t('moon-modal-title')}</h3>` +
     `<div class="pm-now">` +
-    `<span class="pm-cur">${LANG === 'zh' ? mp.zh : mp.en}</span>` +
+    /* 月相名是文字（数值型首值 34px 的类套文字会失衡，中英皆然），单独降档 */
+    `<span class="pm-cur pm-cur-text">${LANG === 'zh' ? mp.zh : mp.en}</span>` +
     `<span class="dlevel">${t('moon-lit')} ${pct}% · ${waxing ? t('moon-modal-waxing') : t('moon-modal-waning')}</span>` +
     `</div>` +
     `<div class="moon-big">${moonSvg(56, phase)}</div>` +
@@ -1859,7 +1860,18 @@ function dayLength(sunriseIso, sunsetIso) {
 function renderWeather(data, cityLabel) {
   const c = data.current, d = data.daily;
 
-  setText('city-name', cityLabel);
+  // 城市名拆「主名 + 小灰字上级」，与搜索建议框一致（例：黄冈市 湖北省）
+  {
+    const sep = cityLabel.includes('，') ? '，' : (cityLabel.includes(', ') ? ', ' : '');
+    if (sep) {
+      const cut = cityLabel.lastIndexOf(sep);
+      document.getElementById('city-name').innerHTML =
+        escapeHtml(cityLabel.slice(0, cut)) +
+        `<span class="city-region">${escapeHtml(cityLabel.slice(cut + sep.length))}</span>`;
+    } else {
+      setText('city-name', cityLabel);
+    }
+  }
   setText('current-date', new Date().toLocaleDateString(localeTag(),
     { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
   setText('current-desc', wmoText(c.weather_code));

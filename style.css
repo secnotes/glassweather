@@ -218,6 +218,7 @@ a { color: var(--accent); }
   flex-wrap: wrap;
 }
 .current-meta h2 { font-size: 26px; font-weight: 700; }
+.current-meta h2 .city-region { color: var(--muted); font-size: 16px; font-weight: 400; margin-left: 10px; }
 .current-meta .desc { font-size: 16px; margin-top: 4px; }
 .temp-range { font-size: 14px; margin-top: 6px; }
 .temp-range .t-low { color: #67e8f9; font-weight: 600; }
@@ -341,6 +342,8 @@ a { color: var(--accent); }
 .pm-now { display: flex; align-items: baseline; gap: 10px; }
 .pm-cur { font-size: 34px; font-weight: 700; }
 .pm-cur small { font-size: 14px; font-weight: 400; color: var(--muted); }
+/* 文字型首值（月相名）：34px 为数值设计，文字需降档才与数值首值体量平衡 */
+.pm-cur-text { font-size: 23px; font-weight: 600; line-height: 34px; }
 .pm-trend { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
 
 .pm-sub {
