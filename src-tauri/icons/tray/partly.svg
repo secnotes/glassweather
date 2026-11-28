@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-<g transform="translate(2,6) scale(0.9)"><g transform="translate(42,40) scale(0.85)" stroke="#FFC93C" stroke-width="8" stroke-linecap="round">
+<g transform="translate(-4,2)"><g transform="translate(44,42) scale(1)" stroke="#FFC93C" stroke-width="9" stroke-linecap="round">
   <line x1='0' y1='-30' x2='0' y2='-42' transform='rotate(0)'/>
 <line x1='0' y1='-30' x2='0' y2='-42' transform='rotate(45)'/>
 <line x1='0' y1='-30' x2='0' y2='-42' transform='rotate(90)'/>
@@ -9,8 +9,8 @@
 <line x1='0' y1='-30' x2='0' y2='-42' transform='rotate(270)'/>
 <line x1='0' y1='-30' x2='0' y2='-42' transform='rotate(315)'/>
 </g>
-<circle cx="42" cy="40" r="20" fill="#FFC93C"/></g>
-<g transform="translate(10,22) scale(0.86)"><g fill="#EAF0F7" stroke="rgba(22,34,46,0.55)" stroke-width="5" stroke-linejoin="round">
+<circle cx="44" cy="42" r="21" fill="#FFC93C"/></g>
+<g transform="translate(14,26) scale(0.78)"><g fill="#EAF0F7" stroke="rgba(22,34,46,0.65)" stroke-width="6.5" stroke-linejoin="round">
   <rect x="34" y="86" width="68" height="26" rx="13"/>
   <circle cx="52" cy="84" r="22"/>
   <circle cx="78" cy="68" r="30"/>

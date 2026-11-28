@@ -303,14 +303,15 @@ fn current_lang(_app: &AppHandle) -> String {
     LANG.with(|l| l.borrow().clone().unwrap_or_else(|| "en".into()))
 }
 
-/* ============================ 天气图标 / tooltip ============================ */
+/* ============================ 托盘 tooltip ============================ */
 
-/// 最近一次天气快照：前端 set_tray_weather 上报，仅保留 Rust 侧需要的两项。
+/* 托盘图标固定用应用图标（动态天气图标已移除——16px 下辨识度不足，且任务栏
+   天气 / 悬浮条已承担动态天气展示；托盘的本分是品牌标识 + 菜单入口）。
+   动态天气信息保留在原生 tooltip（一句话悬停）。源图形留在 icons/tray/ 备查。 */
+
+/// 最近一次天气快照：仅存 tooltip 文案（已按语言拼好）
 #[derive(Clone)]
 struct WeatherSnap {
-    /// 图标组名：clear/night/partly/cloudy/fog/rain/snow/thunder
-    group: String,
-    /// 托盘原生 tooltip 文案（已按语言拼好）
     tooltip: String,
 }
 
@@ -319,73 +320,28 @@ fn weather_store() -> &'static Mutex<Option<WeatherSnap>> {
     WEATHER.get_or_init(|| Mutex::new(None))
 }
 
-/// 前端上报的托盘天气快照（字段命名与 app.js buildTraySnapshot 对应）
+/// 前端上报的托盘天气快照（字段命名与 app.js buildTraySnapshot 对应；
+/// 天气码等其余字段仅服务于此处不再使用的图标选择，serde 忽略即可）
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WeatherPayload {
     lang: String,
     city: String,
-    code: i64,
-    #[serde(default = "default_true")]
-    is_day: bool,
     temp: i64,
     feels: i64,
     desc: String,
 }
-fn default_true() -> bool {
-    true
-}
 
-/// WMO 代码 + 昼夜 -> 8 组图标名
-fn weather_group(code: i64, is_day: bool) -> &'static str {
-    match code {
-        0 => {
-            if is_day {
-                "clear"
-            } else {
-                "night"
-            }
-        }
-        1 | 2 => "partly",
-        3 => "cloudy",
-        45 | 48 => "fog",
-        51..=67 | 80..=82 => "rain",
-        71..=77 | 85 | 86 => "snow",
-        95..=99 => "thunder",
-        _ => "cloudy",
-    }
-}
-
-/// 编译期嵌入 8 张预渲染 PNG（源 SVG / 生成脚本见 icons/tray/）
-fn group_icon(group: &str) -> Option<tauri::image::Image<'static>> {
-    let bytes: &[u8] = match group {
-        "clear" => include_bytes!("../icons/tray/clear.png"),
-        "night" => include_bytes!("../icons/tray/night.png"),
-        "partly" => include_bytes!("../icons/tray/partly.png"),
-        "cloudy" => include_bytes!("../icons/tray/cloudy.png"),
-        "fog" => include_bytes!("../icons/tray/fog.png"),
-        "rain" => include_bytes!("../icons/tray/rain.png"),
-        "snow" => include_bytes!("../icons/tray/snow.png"),
-        "thunder" => include_bytes!("../icons/tray/thunder.png"),
-        _ => return None,
-    };
-    tauri::image::Image::from_bytes(bytes).ok()
-}
-
-/// 按当前快照刷新托盘图标与 tooltip
+/// 按当前快照刷新托盘 tooltip
 fn apply_weather(app: &AppHandle) {
     let snap = weather_store().lock().unwrap().clone();
     let Some(snap) = snap else { return };
     let Some(tray) = app.tray_by_id("main") else { return };
-    if let Some(icon) = group_icon(&snap.group) {
-        let _ = tray.set_icon(Some(icon));
-    }
     let _ = tray.set_tooltip(Some(&snap.tooltip));
 }
 
 #[tauri::command]
 fn set_tray_weather(app: AppHandle, snapshot: WeatherPayload) -> Result<(), String> {
-    let group = weather_group(snapshot.code, snapshot.is_day);
     let tooltip = if snapshot.lang == "zh" {
         format!(
             "{} {} {}°（体感 {}°）",
@@ -397,18 +353,15 @@ fn set_tray_weather(app: AppHandle, snapshot: WeatherPayload) -> Result<(), Stri
             snapshot.city, snapshot.desc, snapshot.temp, snapshot.feels
         )
     };
-    // 去重：轮询通道每 2s 会重放同一快照，显示状态不变就不重设图标/tooltip
+    // 去重：轮询通道每 2s 会重放同一快照，显示状态不变就不重设 tooltip
     {
         let mut store = weather_store().lock().unwrap();
         if let Some(old) = store.as_ref() {
-            if old.group == group && old.tooltip == tooltip {
+            if old.tooltip == tooltip {
                 return Ok(());
             }
         }
-        *store = Some(WeatherSnap {
-            group: group.to_string(),
-            tooltip,
-        });
+        *store = Some(WeatherSnap { tooltip });
     }
     apply_weather(&app);
     Ok(())
@@ -853,10 +806,11 @@ fn create_deskband_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
     // 系统切换深浅模式（或窗口重建）时重注入任务栏主题
     let themed = window.clone();
-    window.on_window_event(move |event| {
-        if let WindowEvent::ThemeChanged(_) = event {
+    window.on_window_event(move |event| match event {
+        WindowEvent::ThemeChanged(_) => {
             apply_deskband_theme(&themed);
         }
+        _ => {}
     });
     Ok(window)
 }
