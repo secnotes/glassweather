@@ -114,6 +114,8 @@ const I18N = {
     title: '天气查询',
     subtitle: '实时天气 · 7 天预报 · 30 年今日历史',
     'search-ph': '搜索城市，如 北京 / Shanghai / Tokyo',
+    'history-label': '最近：',
+    'history-del': '移除',
     'label-humidity': '湿度',
     'label-wind': '风力',
     'label-pressure': '气压',
@@ -217,6 +219,8 @@ const I18N = {
     title: 'GlassWeather',
     subtitle: 'Current · 7-Day Forecast · 30-Year History',
     'search-ph': 'Search city, e.g. Beijing / Shanghai / Tokyo',
+    'history-label': 'Recent:',
+    'history-del': 'Remove',
     'label-humidity': 'Humidity',
     'label-wind': 'Wind',
     'label-pressure': 'Pressure',
@@ -2090,6 +2094,79 @@ async function locateMe({ isStartup = false } = {}) {
   });
 }
 
+/* ---------- 历史查询城市（方案 A：搜索框下方一行 chips） ----------
+   selectCity 时记录（去重、最新在前、截断 8 条），localStorage 持久化；
+   点击 chip 走 selectCity 重新加载；当前城市高亮。语言切换时随 applyLang 重渲染。 */
+const HISTORY_KEY = CACHE_PREFIX + 'cityHistory';
+const HISTORY_MAX = 8;
+
+function readCityHistory() {
+  try {
+    const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    return Array.isArray(list) ? list.filter(c => c && c.lat != null && c.zhName) : [];
+  } catch { return []; }
+}
+
+function recordCityHistory(lat, lon, zhName, enName) {
+  const list = readCityHistory();
+  const idx = list.findIndex(c =>
+    Math.abs(c.lat - lat) < 0.02 && Math.abs(c.lon - lon) < 0.02);   // 同城判定（~2km）
+  if (idx >= 0) {
+    // 已在历史：只刷新名字（可能来自更准的来源），不调整顺序——
+    // 点历史里的旧城市不应把它提到队首，位置固定才好找
+    list[idx] = { lat, lon, zhName, enName: enName || zhName };
+  } else {
+    list.unshift({ lat, lon, zhName, enName: enName || zhName });
+  }
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX))); } catch {}
+  renderHistoryBar();
+}
+
+function renderHistoryBar() {
+  const bar = document.getElementById('history-bar');
+  const box = document.getElementById('history-chips');
+  if (!bar || !box) return;
+  const list = readCityHistory();
+  if (!list.length) { bar.hidden = true; return; }
+  bar.hidden = false;
+  // 主卡标题同款拆法：全名「主名，上级」取主名展示，hover 见全名
+  const shortName = name => {
+    const cut = name.lastIndexOf('，') >= 0 ? name.lastIndexOf('，') : name.lastIndexOf(', ');
+    return cut > 0 ? name.slice(0, cut) : name;
+  };
+  box.innerHTML = list.map(c => {
+    const zhShort = shortName(c.zhName), enShort = shortName(c.enName || c.zhName);
+    const cur = Math.abs(c.lat - lastCtx.lat) < 0.02 && Math.abs(c.lon - lastCtx.lon) < 0.02;
+    return `<span class="chip${cur ? ' chip-cur' : ''}"` +
+      ` title="${escapeHtml(c.zhName)} / ${escapeHtml(c.enName || '')}"` +
+      ` data-lat="${c.lat}" data-lon="${c.lon}"` +
+      ` data-zh="${escapeHtml(c.zhName)}" data-en="${escapeHtml(c.enName || c.zhName)}">` +
+      `<button type="button" class="chip-btn">${escapeHtml(LANG === 'zh' ? zhShort : enShort)}</button>` +
+      `<button type="button" class="chip-del" title="${escapeHtml(t('history-del'))}">✕</button>` +
+      `</span>`;
+  }).join('');
+  box.querySelectorAll('.chip-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      const chip = b.parentElement;
+      selectCity(parseFloat(chip.dataset.lat), parseFloat(chip.dataset.lon), chip.dataset.zh, chip.dataset.en);
+    });
+  });
+  box.querySelectorAll('.chip-del').forEach(d => {
+    d.addEventListener('click', e => {
+      e.stopPropagation();
+      const chip = d.parentElement;
+      removeCityHistory(parseFloat(chip.dataset.lat), parseFloat(chip.dataset.lon));
+    });
+  });
+}
+
+function removeCityHistory(lat, lon) {
+  const list = readCityHistory().filter(c =>
+    !(Math.abs(c.lat - lat) < 0.02 && Math.abs(c.lon - lon) < 0.02));
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch {}
+  renderHistoryBar();
+}
+
 /* 启动：优先用记忆位置；首次访问先定位（最多 8 秒），拒绝/失败 Toast 后回退北京 */
 async function loadInitialCity() {
   const saved = cacheGet(GEO_KEY, GEO_POS_TTL);
@@ -2122,6 +2199,8 @@ async function selectCity(lat, lon, zhName, enName) {
   };
   // 记住本次查看的位置（无论来自定位还是搜索），下次打开直接加载
   cacheSet(GEO_KEY, { lat, lon, zhName: lastCtx.zhName, enName: lastCtx.enName });
+  // 记入历史查询城市（去重、最新在前、截断 8 条），并渲染历史行
+  recordCityHistory(lat, lon, lastCtx.zhName, lastCtx.enName);
   showExtremesLoading();
 
   // 天气 / 历史 / 空气质量并行拉取（历史是慢的那个，约 10 秒）
@@ -2213,9 +2292,9 @@ function setLang(lang) {
   syncTrayLang();   // 桌面版：托盘菜单跟随语言（网页版为 no-op）
   if (lastCtx.weather) { renderWeather(lastCtx.weather, cityLabel()); syncTrayWeather(); }
   if (lastCtx.aqi) renderAQI(lastCtx.aqi);
-  if (lastCtx.aqi) renderAQI(lastCtx.aqi);
   if (lastCtx.extremes) renderExtremes(lastCtx.extremes, cityLabel());
   else showExtremesLoading();  // 历史仍在后台拉取，完成时会按新语言渲染
+  renderHistoryBar();   // 历史城市 chips 跟随语言
 }
 document.querySelectorAll('#lang-switch button').forEach(b => {
   b.addEventListener('click', () => setLang(b.dataset.lang));
@@ -2303,4 +2382,5 @@ function showToast(msg) {
 applyLang();
 syncTrayLang();   // 桌面版：启动即用记忆语言重建托盘菜单（网页版为 no-op）
 document.getElementById('loc-btn').addEventListener('click', () => locateMe());
+renderHistoryBar();   // 历史查询城市行（无记录时自动隐藏）
 loadInitialCity();

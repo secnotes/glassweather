@@ -36,6 +36,12 @@
   </header>
 
   <main class="container">
+    <!-- 历史查询城市（方案 A：搜索框下方一行 chips，默认展开可收起） -->
+    <div id="history-bar" class="history-bar" hidden>
+      <span class="history-label" data-i18n="history-label">最近：</span>
+      <div id="history-chips" class="history-chips"></div>
+    </div>
+
     <!-- 当前天气主卡 -->
     <section id="current" class="card current-card skeleton" aria-live="polite">
       <div class="current-main">
