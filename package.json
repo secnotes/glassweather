@@ -1,7 +1,7 @@
 {
   "name": "weather-desktop",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "GlassWeather 桌面天气应用（Tauri 壳）。前端文件在仓库根目录，与网页版共用。",
   "scripts": {
     "tauri": "tauri"

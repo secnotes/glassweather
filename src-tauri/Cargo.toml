@@ -1,6 +1,6 @@
 [package]
 name = "glassweather"
-version = "0.2.1"
+version = "0.2.2"
 description = "天气查询桌面应用：实时天气 · 7 天预报 · 30 年今日历史"
 edition = "2021"
 
