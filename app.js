@@ -2167,6 +2167,7 @@ document.addEventListener('click', e => {
   invokeTray('plugin:opener|open_url', { url });
 });
 
+/* ---------- 静默刷新：页面隐藏时一直挂着的窗口不再停留在旧快照 ----------
    只重拉天气 + 空气质量（历史归档本质静态，缓存 30 天，不参与）。
    两个触发器：
    1. visibilitychange：切回标签页 / 主窗口重新可见时（网页+桌面通用）；
